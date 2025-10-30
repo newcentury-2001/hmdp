@@ -202,6 +202,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         return Result.ok(orderId);
     }
 
+    @Override
     @Transactional
     public void createVoucherOrder(VoucherOrder voucherOrder) {
         // 5.一人一单
