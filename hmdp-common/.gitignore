@@ -1,11 +1,8 @@
 HELP.md
 target/
 !.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
-logs/
-
-**/dependency-reduced-pom.xml
+!**/src/main/**
+!**/src/test/**
 
 ### STS ###
 .apt_generated
@@ -15,16 +12,13 @@ logs/
 .settings
 .springBeans
 .sts4-cache
-.DS_Store
 
 ### IntelliJ IDEA ###
 .idea
 *.iws
 *.iml
 *.ipr
-*.log
-*.hprof
-.flattened-pom.xml
+
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
@@ -32,10 +26,6 @@ logs/
 /nbdist/
 /.nb-gradle/
 build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
 ### VS Code ###
 .vscode/
-
-CLAUDE.md

@@ -1,0 +1,28 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: hmdp
+  datasource:
+    type: com.zaxxer.hikari.HikariDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/hmdp?useUnicode=true&characterEncoding=UTF-8&rewriteBatchedStatements=true&allowMultiQueries=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+  data:
+    redis:
+      database: 0
+      host: 127.0.0.1
+      port: 6379
+  jackson:
+    default-property-inclusion: non_null # JSON处理时忽略非空字段
+mybatis-plus:
+  type-aliases-package: org.javaup.entity # 别名扫描包
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    local-cache-scope: statement
+logging:
+  level:
+    org.javaup: debug
+  pattern:
+    dateformat: mm:ss.SSS

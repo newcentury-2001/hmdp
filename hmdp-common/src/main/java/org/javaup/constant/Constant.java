@@ -1,0 +1,25 @@
+package org.javaup.constant;
+
+/**
+ * @program: 数据中台实战项目。 添加 阿星不是程序员 微信，添加时备注 中台 来获取项目的完整资料 
+ * @description: 常量
+ * @author: 阿星不是程序员
+ **/
+public class Constant {
+    
+    public static final String PREFIX_DISTINCTION_NAME = "prefix.distinction.name";
+    
+    public static final String DEFAULT_PREFIX_DISTINCTION_NAME = "hmdp";
+    
+    public static final String SPRING_INJECT_PREFIX_DISTINCTION_NAME = "${"+PREFIX_DISTINCTION_NAME+":"+DEFAULT_PREFIX_DISTINCTION_NAME+"}";
+
+    public static final String UNDER_LINE = "_";
+    
+    public static final String STRIKE = "-";
+    
+    public static final String COMMA = ",";
+    
+    public static final String DATE_DAY_PATTERN = "yyyyMMdd";
+    
+    public static final Integer TWO = 2;
+}
