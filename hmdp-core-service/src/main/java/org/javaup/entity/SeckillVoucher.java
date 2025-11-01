@@ -1,6 +1,5 @@
 package org.javaup.entity;
 
-import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -25,11 +24,16 @@ import java.time.LocalDateTime;
 public class SeckillVoucher implements Serializable {
 
     private static final long serialVersionUID = 1L;
-
+    
+    /**
+     * 主键
+     */
+    @TableId(value = "id")
+    private Long id;
+    
     /**
      * 关联的优惠券的id
      */
-    @TableId(value = "voucher_id", type = IdType.INPUT)
     private Long voucherId;
 
     /**

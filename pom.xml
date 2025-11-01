@@ -20,7 +20,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.javaup</groupId>
-    <artifactId>hmdp</artifactId>
+    <artifactId>hmdp-plus</artifactId>
     <version>${revision}</version>
     <packaging>pom</packaging>
 
@@ -34,6 +34,7 @@
         <module>hmdp-core-service</module>
         <module>hmdp-redisson-framework</module>
         <module>hmdp-redis-tool-framework</module>
+        <module>hmdp-id-generator-framework</module>
     </modules>
 
     <properties>

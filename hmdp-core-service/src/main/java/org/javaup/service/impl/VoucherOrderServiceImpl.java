@@ -8,6 +8,7 @@ import org.javaup.entity.VoucherOrder;
 import org.javaup.mapper.VoucherOrderMapper;
 import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IVoucherOrderService;
+import org.javaup.toolkit.SnowflakeIdGenerator;
 import org.javaup.utils.RedisIdWorker;
 import org.javaup.utils.UserHolder;
 import jakarta.annotation.PostConstruct;
@@ -58,6 +59,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @Resource
     private RedissonClient redissonClient;
+    
+    @Resource
+    private SnowflakeIdGenerator snowflakeIdGenerator;
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
 
@@ -180,11 +184,13 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
     IVoucherOrderService proxy;
-    //抢优惠券下单
+    /**
+     * 抢优惠券下单
+     * */
     @Override
     public Result seckillVoucher(Long voucherId) {
         Long userId = UserHolder.getUser().getId();
-        long orderId = redisIdWorker.nextId("order");
+        long orderId = snowflakeIdGenerator.nextId();
         // 1.执行lua脚本
         Long result = stringRedisTemplate.execute(
                 SECKILL_SCRIPT,
@@ -204,7 +210,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void createVoucherOrder(VoucherOrder voucherOrder) {
         // 5.一人一单
         Long userId = voucherOrder.getUserId();
@@ -217,18 +223,18 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             log.error("用户已经购买过一次！");
             return;
         }
-
         // 6.扣减库存
         boolean success = seckillVoucherService.update()
-                .setSql("stock = stock - 1") // set stock = stock - 1
-                .eq("voucher_id", voucherOrder.getVoucherId()).gt("stock", 0) // where id = ? and stock > 0
+                // set stock = stock - 1
+                .setSql("stock = stock - 1")
+                // where id = ? and stock > 0
+                .eq("voucher_id", voucherOrder.getVoucherId()).gt("stock", 0) 
                 .update();
         if (!success) {
             // 扣减失败
             log.error("库存不足！");
             return;
         }
-
         // 7.创建订单
         save(voucherOrder);
     }

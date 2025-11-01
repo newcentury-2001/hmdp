@@ -15,6 +15,7 @@ import org.javaup.mapper.BlogMapper;
 import org.javaup.service.IBlogService;
 import org.javaup.service.IFollowService;
 import org.javaup.service.IUserService;
+import org.javaup.toolkit.SnowflakeIdGenerator;
 import org.javaup.utils.SystemConstants;
 import org.javaup.utils.UserHolder;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -49,6 +50,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     @Resource
     private IFollowService followService;
+    
+    @Resource
+    private SnowflakeIdGenerator snowflakeIdGenerator;
 
     @Override
     public Result queryHotBlog(Integer current) {
@@ -146,6 +150,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     public Result saveBlog(Blog blog) {
         // 1.获取登录用户
         UserDTO user = UserHolder.getUser();
+        blog.setId(snowflakeIdGenerator.nextId());
         blog.setUserId(user.getId());
         // 2.保存探店笔记
         boolean isSuccess = save(blog);

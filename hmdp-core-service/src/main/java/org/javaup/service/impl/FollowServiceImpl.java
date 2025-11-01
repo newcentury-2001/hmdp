@@ -3,16 +3,18 @@ package org.javaup.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import jakarta.annotation.Resource;
 import org.javaup.dto.Result;
 import org.javaup.dto.UserDTO;
 import org.javaup.entity.Follow;
 import org.javaup.mapper.FollowMapper;
 import org.javaup.service.IFollowService;
 import org.javaup.service.IUserService;
+import org.javaup.toolkit.SnowflakeIdGenerator;
 import org.javaup.utils.UserHolder;
-import jakarta.annotation.Resource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -33,6 +35,8 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private IUserService userService;
+    @Resource
+    private SnowflakeIdGenerator snowflakeIdGenerator;
 
     @Override
     public Result follow(Long followUserId, Boolean isFollow) {
@@ -43,6 +47,7 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
         if (isFollow) {
             // 2.关注，新增数据
             Follow follow = new Follow();
+            follow.setId(snowflakeIdGenerator.nextId());
             follow.setUserId(userId);
             follow.setFollowUserId(followUserId);
             boolean isSuccess = save(follow);

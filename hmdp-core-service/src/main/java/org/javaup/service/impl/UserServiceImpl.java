@@ -11,6 +11,7 @@ import org.javaup.dto.UserDTO;
 import org.javaup.entity.User;
 import org.javaup.mapper.UserMapper;
 import org.javaup.service.IUserService;
+import org.javaup.toolkit.SnowflakeIdGenerator;
 import org.javaup.utils.RegexUtils;
 import org.javaup.utils.UserHolder;
 import jakarta.annotation.Resource;
@@ -48,6 +49,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    
+    @Resource
+    private SnowflakeIdGenerator snowflakeIdGenerator;
 
     @Override
     public Result sendCode(String phone, HttpSession session) {
@@ -173,6 +177,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     private User createUserWithPhone(String phone) {
         // 1.创建用户
         User user = new User();
+        user.setId(snowflakeIdGenerator.nextId());
         user.setPhone(phone);
         user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomString(10));
         // 2.保存用户

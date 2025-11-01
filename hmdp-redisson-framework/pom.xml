@@ -5,7 +5,7 @@
 
     <parent>
         <groupId>org.javaup</groupId>
-        <artifactId>hmdp</artifactId>
+        <artifactId>hmdp-plus</artifactId>
         <version>${revision}</version>
     </parent>
 
@@ -16,6 +16,7 @@
 
     <modules>
         <module>hmdp-redisson-service-framework</module>
+        <module>hmdp-service-delay-queue-framework</module>
     </modules>
 
 </project>

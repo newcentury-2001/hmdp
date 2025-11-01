@@ -9,6 +9,7 @@ import org.javaup.handler.BloomFilterHandler;
 import org.javaup.mapper.VoucherMapper;
 import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IVoucherService;
+import org.javaup.toolkit.SnowflakeIdGenerator;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,7 +35,15 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private BloomFilterHandler bloomFilterHandler;
-
+    @Resource
+    private SnowflakeIdGenerator snowflakeIdGenerator;
+    
+    @Override
+    public void addVoucher(final Voucher voucher) {
+        voucher.setId(snowflakeIdGenerator.nextId());
+        save(voucher);
+    }
+    
     @Override
     public Result queryVoucherOfShop(Long shopId) {
         // 查询优惠券信息
@@ -47,9 +56,10 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     @Transactional(rollbackFor = Exception.class)
     public void addSeckillVoucher(Voucher voucher) {
         // 保存优惠券
-        save(voucher);
+        addVoucher(voucher);
         // 保存秒杀信息
         SeckillVoucher seckillVoucher = new SeckillVoucher();
+        seckillVoucher.setId(snowflakeIdGenerator.nextId());
         seckillVoucher.setVoucherId(voucher.getId());
         seckillVoucher.setStock(voucher.getStock());
         seckillVoucher.setBeginTime(voucher.getBeginTime());

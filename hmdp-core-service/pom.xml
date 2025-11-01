@@ -5,7 +5,7 @@
 
     <parent>
         <groupId>org.javaup</groupId>
-        <artifactId>hmdp</artifactId>
+        <artifactId>hmdp-plus</artifactId>
         <version>${revision}</version>
     </parent>
 
@@ -71,6 +71,11 @@
         <dependency>
             <groupId>org.javaup</groupId>
             <artifactId>hmdp-bloom-filter-framework</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.javaup</groupId>
+            <artifactId>hmdp-id-generator-framework</artifactId>
             <version>${revision}</version>
         </dependency>
         <dependency>

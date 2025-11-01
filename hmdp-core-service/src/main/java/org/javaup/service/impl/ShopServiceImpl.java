@@ -14,6 +14,7 @@ import org.javaup.redis.RedisCache;
 import org.javaup.redis.RedisKeyBuild;
 import org.javaup.service.IShopService;
 import org.javaup.servicelock.LockType;
+import org.javaup.toolkit.SnowflakeIdGenerator;
 import org.javaup.util.ServiceLockTool;
 import org.javaup.utils.CacheClient;
 import org.javaup.utils.SystemConstants;
@@ -68,10 +69,14 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Resource
     private BloomFilterHandler bloomFilterHandler;
     
+    @Resource
+    private SnowflakeIdGenerator snowflakeIdGenerator;
+    
     
     @Override
     public Result saveShop(final Shop shop) {
         // 写入数据库
+        shop.setId(snowflakeIdGenerator.nextId());
         save(shop);
         // 写入布隆过滤器
         bloomFilterHandler.add(String.valueOf(shop.getId()));
