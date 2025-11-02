@@ -1,7 +1,7 @@
 package org.javaup.service;
 
-import org.javaup.entity.SeckillVoucher;
 import com.baomidou.mybatisplus.extension.service.IService;
+import org.javaup.entity.SeckillVoucher;
 
 /**
  * <p>
@@ -12,5 +12,6 @@ import com.baomidou.mybatisplus.extension.service.IService;
  * @since 2022-01-04
  */
 public interface ISeckillVoucherService extends IService<SeckillVoucher> {
-
+    
+    SeckillVoucher queryByVoucherId(Long voucherId);
 }

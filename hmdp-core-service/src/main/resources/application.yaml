@@ -52,7 +52,7 @@ bloom-filter:
       name: shop-id-bloom
       expected-insertions: 50000
       false-probability: 0.01
-    coupon:
-      name: coupon-id-bloom
+    voucher:
+      name: voucher-id-bloom
       expected-insertions: 100000
       false-probability: 0.01

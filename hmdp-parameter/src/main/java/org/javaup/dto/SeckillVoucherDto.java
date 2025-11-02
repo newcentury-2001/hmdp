@@ -1,0 +1,92 @@
+package org.javaup.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.experimental.Accessors;
+
+import java.io.Serializable;
+import java.time.LocalDateTime;
+
+/**
+ * <p>
+ * 
+ * </p>
+ *
+ * @author 虎哥
+ * @since 2021-12-22
+ */
+@Data
+@EqualsAndHashCode(callSuper = false)
+@Accessors(chain = true)
+public class SeckillVoucherDto implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /**
+     * 商铺id
+     */
+    @NotNull
+    private Long shopId;
+
+    /**
+     * 代金券标题
+     */
+    @NotBlank
+    private String title;
+
+    /**
+     * 副标题
+     */
+    @NotBlank
+    private String subTitle;
+
+    /**
+     * 使用规则
+     */
+    @NotBlank
+    private String rules;
+
+    /**
+     * 支付金额
+     */
+    @NotNull
+    private Long payValue;
+
+    /**
+     * 抵扣金额
+     */
+    @NotNull
+    private Long actualValue;
+
+    /**
+     * 优惠券类型 0,普通券；1,秒杀券
+     */
+    @NotNull
+    private Integer type;
+
+    /**
+     * 优惠券状态 1,上架; 2,下架; 3,过期
+     */
+    @NotNull
+    private Integer status;
+    
+    /**
+     * 库存
+     */
+    @NotNull
+    private Integer stock;
+    
+    /**
+     * 生效时间
+     */
+    @NotNull
+    private LocalDateTime beginTime;
+    
+    /**
+     * 失效时间
+     */
+    @NotNull
+    private LocalDateTime endTime;
+}

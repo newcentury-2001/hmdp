@@ -1,19 +1,24 @@
 package org.javaup.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.util.BooleanUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.javaup.core.RedisKeyManage;
 import org.javaup.dto.Result;
+import org.javaup.entity.SeckillVoucher;
 import org.javaup.entity.VoucherOrder;
+import org.javaup.lua.SeckillVoucherOperate;
 import org.javaup.mapper.VoucherOrderMapper;
+import org.javaup.redis.RedisKeyBuild;
 import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IVoucherOrderService;
 import org.javaup.toolkit.SnowflakeIdGenerator;
 import org.javaup.utils.RedisIdWorker;
 import org.javaup.utils.UserHolder;
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.Resource;
-import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
@@ -62,6 +67,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     
     @Resource
     private SnowflakeIdGenerator snowflakeIdGenerator;
+    
+    @Resource
+    private SeckillVoucherOperate seckillVoucherOperate;
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
 
@@ -189,6 +197,13 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
      * */
     @Override
     public Result seckillVoucher(Long voucherId) {
+        //黑马点评原始版版本
+        //return doSeckillVoucherV1(voucherId);
+        //黑马点评升级版本
+        return doSeckillVoucherV2(voucherId);
+    }
+    
+    public Result doSeckillVoucherV1(Long voucherId) {
         Long userId = UserHolder.getUser().getId();
         long orderId = snowflakeIdGenerator.nextId();
         // 1.执行lua脚本
@@ -196,6 +211,35 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 SECKILL_SCRIPT,
                 Collections.emptyList(),
                 voucherId.toString(), userId.toString(), String.valueOf(orderId)
+        );
+        int r = result.intValue();
+        // 2.判断结果是否为0
+        if (r != 0) {
+            // 2.1.不为0 ，代表没有购买资格
+            return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
+        }
+        // 3.获取代理对象
+        proxy = (IVoucherOrderService) AopContext.currentProxy();
+        // 4.返回订单id
+        return Result.ok(orderId);
+    }
+    
+    public Result doSeckillVoucherV2(Long voucherId) {
+        SeckillVoucher seckillVoucher = seckillVoucherService.queryByVoucherId(voucherId);
+        Long userId = UserHolder.getUser().getId();
+        long orderId = snowflakeIdGenerator.nextId();
+        // 1.执行lua脚本
+        List<String> keys = ListUtil.of(
+                RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_STOCK_KEY),
+                RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY)
+        );
+        String[] args = new String[3];
+        args[0] = voucherId.toString();
+        args[1] = userId.toString();
+        args[2] = String.valueOf(orderId);
+        Long result = seckillVoucherOperate.execute(
+                keys,
+                args
         );
         int r = result.intValue();
         // 2.判断结果是否为0

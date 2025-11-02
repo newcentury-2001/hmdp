@@ -14,11 +14,18 @@ public class BloomFilterHandler {
 
     private final RBloomFilter<String> bloomFilter;
 
-    public BloomFilterHandler(RedissonClient redissonClient, String name, Long expectedInsertions, Double falseProbability){
+    public BloomFilterHandler(RedissonClient redissonClient, 
+                              String name, 
+                              Long expectedInsertions, 
+                              Double falseProbability){
         RBloomFilter<String> bf = redissonClient.getBloomFilter(
-                SpringUtil.getPrefixDistinctionName() + "-" + name);
-        bf.tryInit(expectedInsertions == null ? 20000L : expectedInsertions,
-                falseProbability == null ? 0.01D : falseProbability);
+                SpringUtil.getPrefixDistinctionName() 
+                        + "-" 
+                        + name);
+        bf.tryInit(expectedInsertions == null ? 
+                        20000L : expectedInsertions,
+                falseProbability == null ? 
+                        0.01D : falseProbability);
         this.bloomFilter = bf;
     }
 
@@ -28,9 +35,5 @@ public class BloomFilterHandler {
 
     public boolean contains(String data) {
         return bloomFilter.contains(data);
-    }
-
-    public RBloomFilter<String> getFilter() {
-        return bloomFilter;
     }
 }

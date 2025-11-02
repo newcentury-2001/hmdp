@@ -79,6 +79,11 @@
             <version>${revision}</version>
         </dependency>
         <dependency>
+            <groupId>org.javaup</groupId>
+            <artifactId>hmdp-parameter</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
             <groupId>org.aspectj</groupId>
             <artifactId>aspectjweaver</artifactId>
         </dependency>

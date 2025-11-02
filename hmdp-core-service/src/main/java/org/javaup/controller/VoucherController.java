@@ -2,8 +2,10 @@ package org.javaup.controller;
 
 
 import jakarta.annotation.Resource;
+import jakarta.validation.Valid;
 import org.javaup.dto.Result;
-import org.javaup.entity.Voucher;
+import org.javaup.dto.SeckillVoucherDto;
+import org.javaup.dto.VoucherDto;
 import org.javaup.service.IVoucherService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,24 +31,24 @@ public class VoucherController {
 
     /**
      * 新增秒杀券
-     * @param voucher 优惠券信息，包含秒杀信息
+     * @param seckillVoucherDto 优惠券信息，包含秒杀信息
      * @return 优惠券id
      */
     @PostMapping("seckill")
-    public Result addSeckillVoucher(@RequestBody Voucher voucher) {
-        voucherService.addSeckillVoucher(voucher);
-        return Result.ok(voucher.getId());
+    public Result addSeckillVoucher(@Valid @RequestBody SeckillVoucherDto seckillVoucherDto) {
+        final Long voucherId = voucherService.addSeckillVoucher(seckillVoucherDto);
+        return Result.ok(voucherId);
     }
 
     /**
      * 新增普通券
-     * @param voucher 优惠券信息
+     * @param voucherDto 优惠券信息
      * @return 优惠券id
      */
     @PostMapping
-    public Result addVoucher(@RequestBody Voucher voucher) {
-        voucherService.addVoucher(voucher);
-        return Result.ok(voucher.getId());
+    public Result addVoucher(@Valid @RequestBody VoucherDto voucherDto) {
+        final Long voucherId = voucherService.addVoucher(voucherDto);
+        return Result.ok(voucherId);
     }
 
 

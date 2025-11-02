@@ -16,6 +16,12 @@ public enum RedisKeyManage {
     CACHE_SHOP_KEY("cache:shop:%s","商铺","value为Shop类型","k"),
     
     CACHE_SHOP_KEY_NULL("cache:shop_null:%s","商铺空的数据","value为这是空值","k"),
+    
+    SECKILL_STOCK_KEY("seckill:stock:%s","秒杀券库存","value为库存","k"),
+    
+    SECKILL_VOUCHER_KEY("seckill:voucher:%s","秒杀券","value为SeckillVoucher类型","k"),
+    
+    SECKILL_VOUCHER_KEY_NULL("seckill:voucher_null:%s","秒杀券的数据","value为这是空值","k"),
     ;
 
     /**

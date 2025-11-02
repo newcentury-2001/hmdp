@@ -1,10 +1,26 @@
 package org.javaup.service.impl;
 
-import org.javaup.entity.SeckillVoucher;
-import org.javaup.mapper.SeckillVoucherMapper;
-import org.javaup.service.ISeckillVoucherService;
+import cn.hutool.core.date.LocalDateTimeUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.javaup.core.RedisKeyManage;
+import org.javaup.entity.SeckillVoucher;
+import org.javaup.handler.BloomFilterHandlerFactory;
+import org.javaup.mapper.SeckillVoucherMapper;
+import org.javaup.redis.RedisCache;
+import org.javaup.redis.RedisKeyBuild;
+import org.javaup.service.ISeckillVoucherService;
+import org.javaup.servicelock.LockType;
+import org.javaup.util.ServiceLockTool;
+import org.redisson.api.RLock;
 import org.springframework.stereotype.Service;
+
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+
+import static org.javaup.utils.RedisConstants.CACHE_NULL_TTL;
+import static org.javaup.utils.RedisConstants.LOCK_SECKILL_VOUCHER_KEY;
 
 /**
  * <p>
@@ -14,7 +30,79 @@ import org.springframework.stereotype.Service;
  * @author 虎哥
  * @since 2022-01-04
  */
+@Slf4j
 @Service
 public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper, SeckillVoucher> implements ISeckillVoucherService {
-
+    
+    @Resource
+    private ServiceLockTool serviceLockTool;
+    
+    @Resource
+    private RedisCache redisCache;
+    
+    @Resource
+    private BloomFilterHandlerFactory bloomFilterHandlerFactory;
+    
+    @Override
+    public SeckillVoucher queryByVoucherId(Long voucherId) {
+        // 双重检测解决缓存击穿
+        SeckillVoucher seckillVoucher =
+                redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY, voucherId), SeckillVoucher.class);
+        // 如果缓存中存在就直接返回
+        if (Objects.nonNull(seckillVoucher)) {
+            return seckillVoucher;
+        }
+        log.info("查询秒杀优惠券 从Redis缓存没有查询到 秒杀优惠券的优惠券id : {}",voucherId);
+        // 通过布隆过滤器判断是否存在
+        if (!bloomFilterHandlerFactory.get("voucher").contains(String.valueOf(voucherId))) {
+            log.info("查询秒杀优惠券 布隆过滤器判断不存在 秒杀优惠券id : {}",voucherId);
+            throw new RuntimeException("查询秒杀优惠券不存在");
+        }
+        // 解决缓存穿透，从缓存中判断是否存在商铺空值信息，如果有，代表商铺不存在，直接返回
+        Boolean existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY_NULL, voucherId));
+        if (existResult){
+            throw new RuntimeException("查询秒杀优惠券不存在");
+        }
+        // 实现双重检测
+        // 加锁，解决缓存击穿
+        RLock lock = serviceLockTool.getLock(LockType.Reentrant, LOCK_SECKILL_VOUCHER_KEY, new String[]{String.valueOf(voucherId)});
+        lock.lock();
+        try {
+            // 再次从缓存中判断是否存在商铺空值信息，如果有，代表商铺不存在，直接返回
+            existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY_NULL, voucherId));
+            if (existResult){
+                throw new RuntimeException("查询商铺不存在");
+            }
+            // 再次从缓存中获取商铺信息，通过此步骤可以避免大量请求在获取锁后，直接击穿缓存访问数据库
+            seckillVoucher = redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY, voucherId), SeckillVoucher.class);
+            // 如果缓存中存在就直接返回
+            if (Objects.nonNull(seckillVoucher)) {
+                return seckillVoucher;
+            }
+            // 如果缓存还不存在，查询数据库
+            seckillVoucher = lambdaQuery().eq(SeckillVoucher::getVoucherId,voucherId).one();
+            // 如果从数据库查询是空的，将空值写入redis
+            if (Objects.isNull(seckillVoucher)) {
+                redisCache.set(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY_NULL, voucherId),
+                        "这是一个空值",
+                        CACHE_NULL_TTL,
+                        TimeUnit.MINUTES);
+                throw new RuntimeException("查询秒杀优惠券不存在");
+            }
+            // 如果数据库查询不是空的，将秒杀优惠券信息写入缓存，TTL为距离结束时间的秒数
+            long ttlSeconds = Math.max(
+                    LocalDateTimeUtil.between(LocalDateTimeUtil.now(), seckillVoucher.getEndTime()).getSeconds(),
+                    1L
+            );
+            redisCache.set(
+                    RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY, voucherId),
+                    seckillVoucher,
+                    ttlSeconds,
+                    TimeUnit.SECONDS
+            );
+            return seckillVoucher;
+        }finally {
+            lock.unlock();
+        }
+    }
 }
