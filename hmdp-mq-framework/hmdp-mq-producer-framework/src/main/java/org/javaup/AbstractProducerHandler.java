@@ -20,10 +20,32 @@ import java.util.concurrent.ExecutionException;
 
 @Slf4j
 @RequiredArgsConstructor
+/**
+ * Kafka 消息发送抽象处理器。
+ *
+ * <p>封装了基于 {@link KafkaTemplate} 的发送能力，统一对消息进行 {@link MessageExtend} 包装，
+ * 并提供成功与失败的扩展钩子方法（{@link #afterSendSuccess(SendResult)}、{@link #afterSendFailure(String, MessageExtend, Throwable)}）。
+ * 同时提供多种便捷发送方式：直接传入业务载荷、携带 key 与 headers、批量发送、阻塞发送、以及发送到 DLQ。</p>
+ *
+ * @param <M> 实际发送的消息类型，必须是 {@link MessageExtend} 的子类型（载荷类型可不固定）
+ */
 public abstract class AbstractProducerHandler<M extends MessageExtend<?>> {
 
+    /**
+     * Kafka 模板：键类型为 {@link String}，值类型为 {@link M}
+     */
     private final KafkaTemplate<String, M> kafkaTemplate;
 
+    /**
+     * 发送消息（已包装为 {@link MessageExtend}），并返回异步结果。
+     *
+     * <p>方法内部会在发送完成后调用扩展钩子：成功则调用 {@link #afterSendSuccess(SendResult)}；
+     * 失败则调用 {@link #afterSendFailure(String, MessageExtend, Throwable)}。</p>
+     *
+     * @param topic   目标主题，不能为空
+     * @param message 已包装的消息对象，不能为空
+     * @return 异步发送结果 {@link CompletableFuture}，包含 {@link SendResult}
+     */
     public final CompletableFuture<SendResult<String, M>> sendMqMessage(String topic, M message) {
         Assert.hasText(topic, "topic must not be blank");
         Assert.notNull(message, "message must not be null");
@@ -38,7 +60,12 @@ public abstract class AbstractProducerHandler<M extends MessageExtend<?>> {
     }
 
     /**
-     * 直接传入payload，内部自动包装为MessageExtend并发送
+     * 直接传入业务载荷，内部自动包装为 {@link MessageExtend} 并发送。
+     *
+     * @param <T>     业务载荷类型
+     * @param topic   目标主题，不能为空
+     * @param payload 业务载荷，不能为空
+     * @return 异步发送结果 {@link CompletableFuture}
      */
     @SuppressWarnings("unchecked")
     public final <T> CompletableFuture<SendResult<String, M>> sendPayload(String topic, T payload) {
@@ -47,7 +74,14 @@ public abstract class AbstractProducerHandler<M extends MessageExtend<?>> {
     }
 
     /**
-     * 支持指定key（用于分区与幂等），并附带headers发送
+     * 传入业务载荷并指定消息 key 与 headers，内部包装为 {@link MessageExtend} 并发送。
+     *
+     * @param <T>      业务载荷类型
+     * @param topic    目标主题，不能为空
+     * @param key      消息键（用于分区与幂等），可为空
+     * @param payload  业务载荷，不能为空
+     * @param headers  业务元数据（将映射到 Kafka Headers），可为空或空集合
+     * @return 异步发送结果 {@link CompletableFuture}
      */
     @SuppressWarnings("unchecked")
     public final <T> CompletableFuture<SendResult<String, M>> sendPayload(String topic, String key, T payload, Map<String, String> headers) {
@@ -56,7 +90,14 @@ public abstract class AbstractProducerHandler<M extends MessageExtend<?>> {
     }
 
     /**
-     * 基于ProducerRecord发送，映射MessageExtend中的key与headers到Kafka Headers
+     * 基于 {@link ProducerRecord} 进行发送。
+     *
+     * <p>会将 {@link MessageExtend#getKey()} 用作 record 的 key；将 {@link MessageExtend#getHeaders()} 映射到 Kafka Headers，
+     * 采用 UTF-8 编码。空键或空值的 header 会被忽略。</p>
+     *
+     * @param topic   目标主题，不能为空
+     * @param message 已包装的消息对象，不能为空
+     * @return 异步发送结果 {@link CompletableFuture}
      */
     public final CompletableFuture<SendResult<String, M>> sendRecord(String topic, M message) {
         Assert.hasText(topic, "topic must not be blank");
@@ -82,7 +123,15 @@ public abstract class AbstractProducerHandler<M extends MessageExtend<?>> {
     }
 
     /**
-     * 批量发送：按顺序发送并等待所有Future完成（不保证原子性）
+     * 批量发送：按顺序触发发送，并返回聚合的 {@link CompletableFuture}。
+     *
+     * <p>注意：该方法不保证原子性；如需逐条错误处理，请使用返回的各个 future。
+     * 返回的 {@code CompletableFuture<Void>} 仅表示“全部完成”的状态。</p>
+     *
+     * @param <T>      业务载荷类型
+     * @param topic    目标主题，不能为空
+     * @param payloads 载荷列表，不能为空
+     * @return 聚合的 {@link CompletableFuture}，全部子任务完成后结束
      */
     @SuppressWarnings("unchecked")
     public final <T> CompletableFuture<Void> sendBatch(String topic, List<T> payloads) {
@@ -96,14 +145,27 @@ public abstract class AbstractProducerHandler<M extends MessageExtend<?>> {
     }
 
     /**
-     * 阻塞发送：调用方需要同步等待结果时使用
+     * 阻塞发送：调用方需要同步等待发送结果（broker ack）时使用。
+     *
+     * @param <T>     业务载荷类型
+     * @param topic   目标主题，不能为空
+     * @param payload 业务载荷，不能为空
+     * @return 发送结果 {@link SendResult}
+     * @throws ExecutionException   发送失败或异步执行失败
+     * @throws InterruptedException 当前线程在等待结果时被中断
      */
     public final <T> SendResult<String, M> sendAndWait(String topic, T payload) throws ExecutionException, InterruptedException {
         return sendPayload(topic, payload).get();
     }
 
     /**
-     * 发送到死信队列（DLQ），topic采用约定：原topic + ".DLQ"
+     * 发送到死信队列（DLQ），topic 采用约定：原 topic + ".DLQ"。
+     *
+     * @param <T>           业务载荷类型
+     * @param originalTopic 原始主题
+     * @param payload       业务载荷
+     * @param reason        死信原因，会作为 header 写入（键：dlqReason）
+     * @return 异步发送结果 {@link CompletableFuture}
      */
     @SuppressWarnings("unchecked")
     public final <T> CompletableFuture<SendResult<String, M>> sendToDlq(String originalTopic, T payload, String reason) {
@@ -113,12 +175,24 @@ public abstract class AbstractProducerHandler<M extends MessageExtend<?>> {
         return sendRecord(dlqTopic, message);
     }
 
+    /**
+     * 发送成功后的扩展钩子，默认记录日志；子类可重写进行自定义处理。
+     *
+     * @param result 发送结果，包含主题、分区、offset 等元数据
+     */
     protected void afterSendSuccess(SendResult<String, M> result) {
         log.info("kafka message send success, topic={}, partition={}, offset={}",
             result.getRecordMetadata().topic(), result.getRecordMetadata().partition(),
             result.getRecordMetadata().offset());
     }
 
+    /**
+     * 发送失败后的扩展钩子，默认记录错误日志；子类可重写进行自定义处理（如告警、重试、DLQ）。
+     *
+     * @param topic     发送的目标主题
+     * @param message   发送的消息对象
+     * @param throwable 失败异常
+     */
     protected void afterSendFailure(String topic, M message, Throwable throwable) {
         log.error("kafka message send failed, topic={}, message={}", topic, JSON.toJSON(message), throwable);
     }
