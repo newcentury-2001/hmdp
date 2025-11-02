@@ -35,6 +35,7 @@
         <module>hmdp-redisson-framework</module>
         <module>hmdp-redis-tool-framework</module>
         <module>hmdp-id-generator-framework</module>
+        <module>hmdp-mq-framework</module>
     </modules>
 
     <properties>

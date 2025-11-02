@@ -16,6 +16,26 @@ spring:
       port: 6379
   jackson:
     default-property-inclusion: non_null # JSON处理时忽略非空字段
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      retries: 1
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      #默认的消费组ID
+      group-id: create_voucher_order
+      #是否自动提交offset - 改为自动提交
+      enable-auto-commit: true
+      #提交offset延时
+      auto-commit-interval: 200
+      # 当kafka中没有初始offset或offset超出范围时将自动重置offset
+      # earliest:重置为分区中最小的offset;
+      # latest:重置为分区中最新的offset(消费分区中新产生的数据);
+      # none:只要有一个分区不存在已提交的offset,就抛出异常;
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer  
 mybatis-plus:
   type-aliases-package: org.javaup.entity # 别名扫描包
   configuration:
