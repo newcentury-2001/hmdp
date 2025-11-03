@@ -75,12 +75,27 @@
         </dependency>
         <dependency>
             <groupId>org.javaup</groupId>
+            <artifactId>hmdp-repeat-execute-limit-framework</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.javaup</groupId>
             <artifactId>hmdp-id-generator-framework</artifactId>
             <version>${revision}</version>
         </dependency>
         <dependency>
             <groupId>org.javaup</groupId>
             <artifactId>hmdp-parameter</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.javaup</groupId>
+            <artifactId>hmdp-mq-producer-framework</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.javaup</groupId>
+            <artifactId>hmdp-mq-consumer-framework</artifactId>
             <version>${revision}</version>
         </dependency>
         <dependency>

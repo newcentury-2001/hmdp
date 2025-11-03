@@ -2,20 +2,26 @@ package org.javaup.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.ListUtil;
+import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.util.BooleanUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.javaup.core.RedisKeyManage;
+import org.javaup.core.SpringUtil;
 import org.javaup.dto.Result;
+import org.javaup.dto.VoucherOrderDto;
 import org.javaup.entity.SeckillVoucher;
 import org.javaup.entity.VoucherOrder;
 import org.javaup.enums.BaseCode;
 import org.javaup.exception.HmdpFrameException;
+import org.javaup.kafka.message.SeckillVoucherMessage;
+import org.javaup.kafka.producer.SeckillVoucherProducer;
 import org.javaup.lua.SeckillVoucherOperate;
 import org.javaup.mapper.VoucherOrderMapper;
 import org.javaup.redis.RedisKeyBuild;
+import org.javaup.repeatexecutelimit.annotion.RepeatExecuteLimit;
 import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IVoucherOrderService;
 import org.javaup.toolkit.SnowflakeIdGenerator;
@@ -24,6 +30,7 @@ import org.javaup.utils.UserHolder;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.beans.BeanUtils;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
@@ -43,6 +50,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import static org.javaup.constant.Constant.SECKILL_VOUCHER_TOPIC;
+import static org.javaup.constant.RepeatExecuteLimitConstants.SECKILL_VOUCHER_ORDER;
 
 /**
  * <p>
@@ -73,6 +83,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     
     @Resource
     private SeckillVoucherOperate seckillVoucherOperate;
+    
+    @Resource
+    private SeckillVoucherProducer seckillVoucherProducer;
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
 
@@ -187,7 +200,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
         try {
             // 获取代理对象（事务）
-            createVoucherOrder(voucherOrder);
+            createVoucherOrderV1(voucherOrder);
         } finally {
             // 释放锁
             lock.unlock();
@@ -206,7 +219,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         return doSeckillVoucherV2(voucherId);
     }
     
-    public Result doSeckillVoucherV1(Long voucherId) {
+    public Result<Long> doSeckillVoucherV1(Long voucherId) {
         Long userId = UserHolder.getUser().getId();
         long orderId = snowflakeIdGenerator.nextId();
         // 1.执行lua脚本
@@ -227,7 +240,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         return Result.ok(orderId);
     }
     
-    public Result doSeckillVoucherV2(Long voucherId) {
+    public Result<Long> doSeckillVoucherV2(Long voucherId) {
         SeckillVoucher seckillVoucher = seckillVoucherService.queryByVoucherId(voucherId);
         Long userId = UserHolder.getUser().getId();
         long orderId = snowflakeIdGenerator.nextId();
@@ -248,21 +261,22 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (!result.equals(BaseCode.SUCCESS.getCode())) {
             throw new HmdpFrameException(Objects.requireNonNull(BaseCode.getRc(result)));
         }
-        int r = result.intValue();
-        // 2.判断结果是否为0
-        if (r != 0) {
-            // 2.1.不为0 ，代表没有购买资格
-            return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
-        }
-        // 3.获取代理对象
-        proxy = (IVoucherOrderService) AopContext.currentProxy();
+        SeckillVoucherMessage seckillVoucherMessage = new SeckillVoucherMessage(
+                userId,
+                voucherId,
+                orderId
+        );
+        seckillVoucherProducer.sendPayload(SpringUtil.getPrefixDistinctionName() 
+                        + "-" + SECKILL_VOUCHER_TOPIC, 
+                seckillVoucherMessage);
+        
         // 4.返回订单id
         return Result.ok(orderId);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void createVoucherOrder(VoucherOrder voucherOrder) {
+    public void createVoucherOrderV1(VoucherOrder voucherOrder) {
         // 5.一人一单
         Long userId = voucherOrder.getUserId();
 
@@ -287,6 +301,44 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return;
         }
         // 7.创建订单
+        save(voucherOrder);
+    }
+    
+    
+    @Override
+    @RepeatExecuteLimit(name = SECKILL_VOUCHER_ORDER,keys = {"#voucherOrderDto.messageId"})
+    @Transactional(rollbackFor = Exception.class)
+    public void createVoucherOrderV2(VoucherOrderDto voucherOrderDto) {
+        // 5.一人一单
+        Long userId = voucherOrderDto.getUserId();
+        
+        // 5.1.查询订单
+        Long count = lambdaQuery().eq(VoucherOrder::getUserId, userId)
+                .eq(VoucherOrder::getVoucherId, voucherOrderDto.getVoucherId())
+                .count();
+        // 5.2.判断是否存在
+        if (count > 0) {
+            // 用户已经购买过了
+            log.error("用户已经购买过一次！");
+            return;
+        }
+        // 6.扣减库存
+        boolean success = seckillVoucherService.update()
+                // set stock = stock - 1
+                .setSql("stock = stock - 1")
+                // where id = ? and stock > 0
+                .eq("voucher_id", voucherOrderDto.getVoucherId())
+                .gt("stock", 0)
+                .update();
+        if (!success) {
+            // 扣减失败
+            log.error("优惠券库存不足！优惠券id:{}", voucherOrderDto.getVoucherId());
+            return;
+        }
+        // 7.创建订单
+        VoucherOrder voucherOrder = new VoucherOrder();
+        BeanUtils.copyProperties(voucherOrderDto, voucherOrder);
+        voucherOrder.setCreateTime(LocalDateTimeUtil.now());
         save(voucherOrder);
     }
 

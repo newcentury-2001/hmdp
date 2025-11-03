@@ -70,12 +70,23 @@ public abstract class AbstractConsumerHandler<T> {
      */
     public final void consume(MessageExtend<T> message) {
         try {
-            doConsume(message);
-            afterConsumeSuccess(message);
+            if (beforeConsume(message)) {
+                doConsume(message);
+                afterConsumeSuccess(message);
+            }
         } catch (Throwable t) {
             afterConsumeFailure(message, t);
             throw t;
         }
+    }
+    /**
+     * 真正消费前的前置钩子，默认打印日志。
+     *
+     * @param message 成功消费的消息
+     */
+    protected Boolean beforeConsume(MessageExtend<T> message) {
+        log.info("kafka message before consume success, uuid={}, key={}", message.getUuid(), message.getKey());
+        return true;
     }
 
     /**
