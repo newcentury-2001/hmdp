@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
+import static org.javaup.constant.Constant.BLOOM_FILTER_HANDLER_SHOP;
 import static org.javaup.utils.RedisConstants.CACHE_SHOP_KEY;
 import static org.javaup.utils.RedisConstants.CACHE_SHOP_TTL;
 import static org.javaup.utils.RedisConstants.LOCK_SHOP_KEY;
@@ -79,7 +80,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         shop.setId(snowflakeIdGenerator.nextId());
         save(shop);
         // 写入布隆过滤器（商铺业务）
-        bloomFilterHandlerFactory.get("shop").add(String.valueOf(shop.getId()));
+        bloomFilterHandlerFactory.get(BLOOM_FILTER_HANDLER_SHOP).add(String.valueOf(shop.getId()));
         // 返回店铺id
         return Result.ok(shop.getId());
     }
@@ -132,7 +133,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
         log.info("查询商铺 从Redis缓存没有查询到 商铺id : {}",id);
         // 通过布隆过滤器判断是否存在
-        if (!bloomFilterHandlerFactory.get("shop").contains(String.valueOf(id))) {
+        if (!bloomFilterHandlerFactory.get(BLOOM_FILTER_HANDLER_SHOP).contains(String.valueOf(id))) {
             log.info("查询商铺 布隆过滤器判断不存在 商铺id : {}",id);
             throw new RuntimeException("查询商铺不存在");
         }

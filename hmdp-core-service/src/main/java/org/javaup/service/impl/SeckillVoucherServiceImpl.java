@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
+import static org.javaup.constant.Constant.BLOOM_FILTER_HANDLER_VOUCHER;
 import static org.javaup.utils.RedisConstants.CACHE_NULL_TTL;
 import static org.javaup.utils.RedisConstants.LOCK_SECKILL_VOUCHER_KEY;
 
@@ -54,7 +55,7 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
         }
         log.info("查询秒杀优惠券 从Redis缓存没有查询到 秒杀优惠券的优惠券id : {}",voucherId);
         // 通过布隆过滤器判断是否存在
-        if (!bloomFilterHandlerFactory.get("voucher").contains(String.valueOf(voucherId))) {
+        if (!bloomFilterHandlerFactory.get(BLOOM_FILTER_HANDLER_VOUCHER).contains(String.valueOf(voucherId))) {
             log.info("查询秒杀优惠券 布隆过滤器判断不存在 秒杀优惠券id : {}",voucherId);
             throw new RuntimeException("查询秒杀优惠券不存在");
         }

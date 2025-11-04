@@ -1,7 +1,7 @@
 package org.javaup.repeatexecutelimit.aspect;
 
 import org.javaup.constant.LockInfoType;
-import org.javaup.exception.DockDataCenterFrameException;
+import org.javaup.exception.HmdpFrameException;
 import org.javaup.handle.RedissonDataHandle;
 import org.javaup.locallock.LocalLockCache;
 import org.javaup.lockinfo.LockInfoHandle;
@@ -54,12 +54,12 @@ public class RepeatExecuteLimitAspect {
         String repeatFlagName = PREFIX_NAME + lockName;
         String flagObject = redissonDataHandle.get(repeatFlagName);
         if (SUCCESS_FLAG.equals(flagObject)) {
-            throw new DockDataCenterFrameException(message);
+            throw new HmdpFrameException(message);
         }
         ReentrantLock localLock = localLockCache.getLock(lockName,true);
         boolean localLockResult = localLock.tryLock();
         if (!localLockResult) {
-            throw new DockDataCenterFrameException(message);
+            throw new HmdpFrameException(message);
         }
         try {
             ServiceLocker lock = serviceLockFactory.getLock(LockType.Fair);
@@ -68,7 +68,7 @@ public class RepeatExecuteLimitAspect {
                 try{
                     flagObject = redissonDataHandle.get(repeatFlagName);
                     if (SUCCESS_FLAG.equals(flagObject)) {
-                        throw new DockDataCenterFrameException(message);
+                        throw new HmdpFrameException(message);
                     }
                     obj = joinPoint.proceed();
                     if (durationTime > 0) {
@@ -83,7 +83,7 @@ public class RepeatExecuteLimitAspect {
                     lock.unlock(lockName);
                 }
             }else{
-                throw new DockDataCenterFrameException(message);
+                throw new HmdpFrameException(message);
             }
         }finally {
             localLock.unlock();

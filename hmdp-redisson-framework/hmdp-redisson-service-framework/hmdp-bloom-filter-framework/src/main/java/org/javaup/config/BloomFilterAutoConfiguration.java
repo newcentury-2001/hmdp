@@ -1,10 +1,9 @@
 package org.javaup.config;
 
 import org.javaup.handler.BloomFilterHandlerFactory;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.redisson.api.RedissonClient;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 
 /**
  * @program: 极度真实还原大麦网高并发实战项目。 添加 阿星不是程序员 微信，添加时备注 大麦 来获取项目的完整资料 
@@ -20,9 +19,7 @@ public class BloomFilterAutoConfiguration {
     }
 
     @Bean
-    public BloomFilterHandlerRegistrar bloomFilterHandlerRegistrar(ConfigurableApplicationContext applicationContext,
-                                                                  RedissonClient redissonClient,
-                                                                  BloomFilterProperties bloomFilterProperties){
-        return new BloomFilterHandlerRegistrar(applicationContext, redissonClient, bloomFilterProperties);
+    public BloomFilterHandlerRegistrar bloomFilterHandlerRegistrar(Environment environment){
+        return new BloomFilterHandlerRegistrar(environment);
     }
 }

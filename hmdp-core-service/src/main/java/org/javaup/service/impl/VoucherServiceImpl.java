@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import static org.javaup.constant.Constant.BLOOM_FILTER_HANDLER_VOUCHER;
 import static org.javaup.utils.RedisConstants.SECKILL_STOCK_KEY;
 
 /**
@@ -54,7 +55,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         BeanUtil.copyProperties(voucherDto, voucher);
         voucher.setId(snowflakeIdGenerator.nextId());
         save(voucher);
-        bloomFilterHandlerFactory.get("voucher").add(voucher.getId().toString());
+        bloomFilterHandlerFactory.get(BLOOM_FILTER_HANDLER_VOUCHER).add(voucher.getId().toString());
         return voucher.getId();
     }
     

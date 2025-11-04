@@ -13,17 +13,19 @@ public enum RedisKeyManage {
     /**
      * redis 缓存 key管理
      * */
-    CACHE_SHOP_KEY("cache:shop:%s","商铺","value为Shop类型","k"),
+    CACHE_SHOP_KEY("cache:shop:%s","商铺id","value为Shop类型","k"),
     
-    CACHE_SHOP_KEY_NULL("cache:shop_null:%s","商铺空的数据","value为这是空值","k"),
+    CACHE_SHOP_KEY_NULL("cache:shop_null:%s","商铺id","value为这是空值","k"),
     
-    SECKILL_STOCK_KEY("seckill:stock:%s","秒杀券库存","value为库存","k"),
+    SECKILL_STOCK_KEY("seckill:stock:%s","秒杀券id","value为库存","k"),
     
-    SECKILL_VOUCHER_KEY("seckill:voucher:%s","秒杀券","value为SeckillVoucher类型","k"),
+    SECKILL_VOUCHER_KEY("seckill:voucher:%s","秒杀券id","value为SeckillVoucher类型","k"),
     
-    SECKILL_VOUCHER_KEY_NULL("seckill:voucher_null:%s","秒杀券的数据","value为这是空值","k"),
+    SECKILL_VOUCHER_KEY_NULL("seckill:voucher_null:%s","秒杀券id","value为这是空值","k"),
     
-    SECKILL_ORDER_KEY("seckill:order:%s","秒杀券的订单","value为用户的集合","k"),
+    SECKILL_USER_KEY("seckill:user:%s","秒杀券id","value为用户的集合","k"),
+    
+    DB_SECKILL_ORDER_KEY("db:seckill:order:%s","秒杀券的订单id","value为订单","k"),
     ;
 
     /**

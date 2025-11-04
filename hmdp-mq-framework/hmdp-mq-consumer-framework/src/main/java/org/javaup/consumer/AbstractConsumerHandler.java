@@ -164,7 +164,7 @@ public abstract class AbstractConsumerHandler<T> {
         }
         Date nowTime = root.getDate("nowTime");
         if (nowTime != null) {
-            message.setNowTime(nowTime);
+            message.setProducerTime(nowTime);
         }
         return message;
     }

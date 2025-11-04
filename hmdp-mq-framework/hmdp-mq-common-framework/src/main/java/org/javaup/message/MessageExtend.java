@@ -47,7 +47,7 @@ public final class MessageExtend<T> implements Serializable {
     /**
      * 消息发送时间
      */
-    private Date nowTime = DateTime.now();
+    private Date producerTime = DateTime.now();
 
     /**
      * 静态工厂：仅包装消息体

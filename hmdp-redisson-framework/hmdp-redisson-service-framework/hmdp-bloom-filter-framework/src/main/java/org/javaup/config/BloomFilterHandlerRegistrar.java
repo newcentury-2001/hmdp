@@ -2,50 +2,70 @@ package org.javaup.config;
 
 import cn.hutool.core.collection.CollectionUtil;
 import org.javaup.handler.BloomFilterHandler;
-import org.redisson.api.RedissonClient;
-import org.springframework.beans.factory.InitializingBean;
-import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
+import org.springframework.beans.factory.support.BeanDefinitionRegistryPostProcessor;
+import org.springframework.beans.factory.support.RootBeanDefinition;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.core.Ordered;
+import org.springframework.core.PriorityOrdered;
+import org.springframework.beans.factory.config.RuntimeBeanReference;
+import org.springframework.core.env.Environment;
 import org.springframework.util.StringUtils;
 
+import java.util.Collections;
 import java.util.Map;
 
 /**
- * 根据配置注册多个 BloomFilterHandler Bean，Bean 名字与配置中的过滤器 name 相同，
- * 同时为业务别名（filters 的 key）注册一个别名，便于按业务注入或获取。
+ * 根据配置在 Bean 定义阶段注册多个 BloomFilterHandler Bean。
+ * 使用 BeanDefinitionRegistryPostProcessor，确保在单例实例化与 @PostConstruct 之前完成注册。
  */
-public class BloomFilterHandlerRegistrar implements InitializingBean {
+public class BloomFilterHandlerRegistrar implements BeanDefinitionRegistryPostProcessor, PriorityOrdered {
 
-    private final ConfigurableApplicationContext applicationContext;
-    private final RedissonClient redissonClient;
-    private final BloomFilterProperties bloomFilterProperties;
+    private final Environment environment;
 
-    public BloomFilterHandlerRegistrar(ConfigurableApplicationContext applicationContext,
-                                       RedissonClient redissonClient,
-                                       BloomFilterProperties bloomFilterProperties) {
-        this.applicationContext = applicationContext;
-        this.redissonClient = redissonClient;
-        this.bloomFilterProperties = bloomFilterProperties;
+    public BloomFilterHandlerRegistrar(Environment environment) {
+        this.environment = environment;
     }
 
     @Override
-    public void afterPropertiesSet() {
-        Map<String, BloomFilterProperties.Filter> filters = bloomFilterProperties.getFilters();
+    public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) throws BeansException {
+        Map<String, BloomFilterProperties.Filter> filters = resolveFiltersFromEnvironment();
         if (CollectionUtil.isEmpty(filters)) {
-            // 未配置则不注册任何 BloomFilterHandler
             return;
         }
         filters.forEach((alias, cfg) -> {
             String beanName = StringUtils.hasText(cfg.getName()) ? cfg.getName() : alias;
-            BloomFilterHandler handler = new BloomFilterHandler(
-                    redissonClient,
-                    beanName,
-                    cfg.getExpectedInsertions(),
-                    cfg.getFalseProbability()
-            );
-            applicationContext.getBeanFactory().registerSingleton(beanName, handler);
+
+            RootBeanDefinition bd = new RootBeanDefinition(BloomFilterHandler.class);
+            bd.getConstructorArgumentValues().addIndexedArgumentValue(0, new RuntimeBeanReference("redissonClient"));
+            bd.getConstructorArgumentValues().addIndexedArgumentValue(1, beanName);
+            bd.getConstructorArgumentValues().addIndexedArgumentValue(2, cfg.getExpectedInsertions());
+            bd.getConstructorArgumentValues().addIndexedArgumentValue(3, cfg.getFalseProbability());
+
+            registry.registerBeanDefinition(beanName, bd);
             if (!beanName.equals(alias)) {
-                applicationContext.getBeanFactory().registerAlias(beanName, alias);
+                registry.registerAlias(beanName, alias);
             }
         });
+    }
+
+    @Override
+    public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
+        // no-op
+    }
+
+    @Override
+    public int getOrder() {
+        return Ordered.HIGHEST_PRECEDENCE;
+    }
+
+    private Map<String, BloomFilterProperties.Filter> resolveFiltersFromEnvironment() {
+        Binder binder = Binder.get(environment);
+        return binder.bind("bloom-filter.filters",
+                Bindable.mapOf(String.class, BloomFilterProperties.Filter.class))
+            .orElse(Collections.emptyMap());
     }
 }

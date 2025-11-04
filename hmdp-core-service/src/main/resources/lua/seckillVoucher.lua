@@ -3,22 +3,20 @@
 local seckill_stock_key = KEYS[1]
 -- 秒杀券的详情
 local seckill_voucher_key = KEYS[2]
--- 订单的key
-local seckill_order_key = KEYS[3]
+-- 秒杀券用户的key
+local seckill_user_key = KEYS[3]
 -- 优惠券id
 local voucherId = ARGV[1]
 -- 用户id
 local userId = ARGV[2]
--- 订单id
-local orderId = ARGV[3]
 
 -- 2.数据key
 -- 库存key
 local stockKey = string.format(seckill_stock_key, voucherId)
 -- 秒杀券的详情key
 local seckillVoucherKey = string.format(seckill_voucher_key, voucherId)
--- 订单key
-local orderKey = string.format(seckill_order_key, seckill_order_key)
+-- 优惠券购买记录
+local seckillUserKey = string.format(seckill_user_key, voucherId)
 
 -- 3.脚本业务
 local seckillVoucherStr = redis.call('get', seckillVoucherKey);
@@ -52,13 +50,13 @@ if(tonumber(stock) <= 0) then
     -- 库存不足，则直接返回
     return 10005
 end
--- 3.2.判断用户是否下单 SISMEMBER orderKey userId
-if(redis.call('sismember', orderKey, userId) == 1) then
+-- 3.2.判断用户是否下单
+if(redis.call('sismember', seckillUserKey, userId) == 1) then
     -- 3.3.存在，说明是重复下单，返回2
     return 10006
 end
 -- 3.4.扣库存 incrby stockKey -1
 redis.call('incrby', stockKey, -1)
--- 3.5.下单（保存用户）sadd orderKey userId
-redis.call('sadd', orderKey, userId)
+-- 3.5.下单（保存用户）
+redis.call('sadd', seckillUserKey, userId)
 return 0

@@ -99,8 +99,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @PostConstruct
     private void init(){
-        // TODO 需要秒杀下单功能的同学自己解开下面的注释
-        SECKILL_ORDER_EXECUTOR.submit(new VoucherOrderHandler());
+        // 这是黑马点评的普通版本，升级版本中不再使用此方式
+        //SECKILL_ORDER_EXECUTOR.submit(new VoucherOrderHandler());
     }
 
     private class VoucherOrderHandler implements Runnable{
@@ -244,11 +244,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         SeckillVoucher seckillVoucher = seckillVoucherService.queryByVoucherId(voucherId);
         Long userId = UserHolder.getUser().getId();
         long orderId = snowflakeIdGenerator.nextId();
-        // 1.执行lua脚本
+        // 执行lua脚本
         List<String> keys = ListUtil.of(
                 RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_STOCK_KEY),
                 RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY),
-                RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_ORDER_KEY)
+                RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_USER_KEY)
         );
         String[] args = new String[3];
         args[0] = voucherId.toString();
@@ -266,11 +266,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 voucherId,
                 orderId
         );
+        // 发送kafka
         seckillVoucherProducer.sendPayload(SpringUtil.getPrefixDistinctionName() 
                         + "-" + SECKILL_VOUCHER_TOPIC, 
                 seckillVoucherMessage);
         
-        // 4.返回订单id
+        // 返回订单id
         return Result.ok(orderId);
     }
 
@@ -319,7 +320,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         // 5.2.判断是否存在
         if (count > 0) {
             // 用户已经购买过了
-            log.error("用户已经购买过一次！");
+            log.info("用户已经购买过一次！");
             return;
         }
         // 6.扣减库存
