@@ -20,6 +20,7 @@ import org.javaup.kafka.message.SeckillVoucherMessage;
 import org.javaup.kafka.producer.SeckillVoucherProducer;
 import org.javaup.lua.SeckillVoucherOperate;
 import org.javaup.mapper.VoucherOrderMapper;
+import org.javaup.redis.RedisCacheImpl;
 import org.javaup.redis.RedisKeyBuild;
 import org.javaup.repeatexecutelimit.annotion.RepeatExecuteLimit;
 import org.javaup.service.ISeckillVoucherService;
@@ -50,6 +51,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.javaup.constant.Constant.SECKILL_VOUCHER_TOPIC;
 import static org.javaup.constant.RepeatExecuteLimitConstants.SECKILL_VOUCHER_ORDER;
@@ -86,6 +88,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     
     @Resource
     private SeckillVoucherProducer seckillVoucherProducer;
+    
+    @Resource
+    private RedisCacheImpl redisCache;
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
 
@@ -96,7 +101,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
     private static final ExecutorService SECKILL_ORDER_EXECUTOR = Executors.newSingleThreadExecutor();
-
+    
+    
     @PostConstruct
     private void init(){
         // 这是黑马点评的普通版本，升级版本中不再使用此方式
@@ -310,20 +316,19 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @RepeatExecuteLimit(name = SECKILL_VOUCHER_ORDER,keys = {"#voucherOrderDto.messageId"})
     @Transactional(rollbackFor = Exception.class)
     public void createVoucherOrderV2(VoucherOrderDto voucherOrderDto) {
-        // 5.一人一单
         Long userId = voucherOrderDto.getUserId();
         
-        // 5.1.查询订单
+        // 查询订单
         Long count = lambdaQuery().eq(VoucherOrder::getUserId, userId)
                 .eq(VoucherOrder::getVoucherId, voucherOrderDto.getVoucherId())
                 .count();
-        // 5.2.判断是否存在
+        // 判断是否存在
         if (count > 0) {
             // 用户已经购买过了
             log.info("用户已经购买过一次！");
             return;
         }
-        // 6.扣减库存
+        // 扣减库存
         boolean success = seckillVoucherService.update()
                 // set stock = stock - 1
                 .setSql("stock = stock - 1")
@@ -336,11 +341,17 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             log.error("优惠券库存不足！优惠券id:{}", voucherOrderDto.getVoucherId());
             return;
         }
-        // 7.创建订单
+        // 创建订单
         VoucherOrder voucherOrder = new VoucherOrder();
         BeanUtils.copyProperties(voucherOrderDto, voucherOrder);
         voucherOrder.setCreateTime(LocalDateTimeUtil.now());
         save(voucherOrder);
+        // 订单存放到redis
+        redisCache.set(RedisKeyBuild.createRedisKey(
+                RedisKeyManage.DB_SECKILL_ORDER_KEY,voucherOrderDto.getId()),
+                voucherOrder,
+                11, 
+                TimeUnit.SECONDS);
     }
 
    /*
