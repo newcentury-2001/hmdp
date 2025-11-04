@@ -48,9 +48,9 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
     public SeckillVoucher queryByVoucherId(Long voucherId) {
         // 双重检测解决缓存击穿
         SeckillVoucher seckillVoucher =
-                redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY, voucherId), SeckillVoucher.class);
+                redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId), SeckillVoucher.class);
         // 如果缓存中存在就直接返回
-        if (Objects.nonNull(seckillVoucher)) {
+        if (Objects.nonNull(seckillVoucher)) {   
             return seckillVoucher;
         }
         log.info("查询秒杀优惠券 从Redis缓存没有查询到 秒杀优惠券的优惠券id : {}",voucherId);
@@ -60,7 +60,7 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
             throw new RuntimeException("查询秒杀优惠券不存在");
         }
         // 解决缓存穿透，从缓存中判断是否存在商铺空值信息，如果有，代表商铺不存在，直接返回
-        Boolean existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY_NULL, voucherId));
+        Boolean existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId));
         if (existResult){
             throw new RuntimeException("查询秒杀优惠券不存在");
         }
@@ -70,12 +70,12 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
         lock.lock();
         try {
             // 再次从缓存中判断是否存在商铺空值信息，如果有，代表商铺不存在，直接返回
-            existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY_NULL, voucherId));
+            existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId));
             if (existResult){
                 throw new RuntimeException("查询商铺不存在");
             }
             // 再次从缓存中获取商铺信息，通过此步骤可以避免大量请求在获取锁后，直接击穿缓存访问数据库
-            seckillVoucher = redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY, voucherId), SeckillVoucher.class);
+            seckillVoucher = redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId), SeckillVoucher.class);
             // 如果缓存中存在就直接返回
             if (Objects.nonNull(seckillVoucher)) {
                 return seckillVoucher;
@@ -84,7 +84,7 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
             seckillVoucher = lambdaQuery().eq(SeckillVoucher::getVoucherId,voucherId).one();
             // 如果从数据库查询是空的，将空值写入redis
             if (Objects.isNull(seckillVoucher)) {
-                redisCache.set(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY_NULL, voucherId),
+                redisCache.set(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId),
                         "这是一个空值",
                         CACHE_NULL_TTL,
                         TimeUnit.MINUTES);
@@ -95,8 +95,17 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
                     LocalDateTimeUtil.between(LocalDateTimeUtil.now(), seckillVoucher.getEndTime()).getSeconds(),
                     1L
             );
+            // 保存秒杀优惠券库存到Redis中（单槽位Hash Tag键）
             redisCache.set(
-                    RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY, voucherId),
+                    RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId),
+                    String.valueOf(seckillVoucher.getStock()),
+                    ttlSeconds,
+                    TimeUnit.SECONDS
+            );
+            // 保存秒杀优惠券详情到Redis中（单槽位Hash Tag键）
+            seckillVoucher.setStock(null);
+            redisCache.set(
+                    RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId),
                     seckillVoucher,
                     ttlSeconds,
                     TimeUnit.SECONDS

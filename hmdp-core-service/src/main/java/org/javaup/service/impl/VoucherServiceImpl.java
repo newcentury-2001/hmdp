@@ -98,7 +98,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         );
         seckillVoucher.setStock(null);
         redisCache.set(
-                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY, voucherId),
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId),
                 seckillVoucher,
                 ttlSeconds,
                 TimeUnit.SECONDS
@@ -124,17 +124,17 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
                 LocalDateTimeUtil.between(LocalDateTimeUtil.now(), seckillVoucher.getEndTime()).getSeconds(),
                 1L
         );
-        // 保存秒杀优惠券库存到Redis中
+        // 保存秒杀优惠券库存到Redis中（单槽位Hash Tag键）
         redisCache.set(
-                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_KEY, voucherId),
-                seckillVoucher.getStock().toString(),
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId),
+                String.valueOf(seckillVoucher.getStock()),
                 ttlSeconds,
                 TimeUnit.SECONDS
         );
-        // 保存秒杀优惠券详情到Redis中
+        // 保存秒杀优惠券详情到Redis中（单槽位Hash Tag键）
         seckillVoucher.setStock(null);
         redisCache.set(
-                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY, voucherId),
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId),
                 seckillVoucher,
                 ttlSeconds,
                 TimeUnit.SECONDS

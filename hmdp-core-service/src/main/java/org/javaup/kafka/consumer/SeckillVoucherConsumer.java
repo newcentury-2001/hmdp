@@ -34,6 +34,7 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
     @Resource
     private SeckillVoucherRollBackOperate seckillVoucherRollBackOperate;
     
+    
     public SeckillVoucherConsumer() {
         super(SeckillVoucherMessage.class);
     }
@@ -79,9 +80,8 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
         try {
             // 回滚redis中的数据
             List<String> keys = ListUtil.of(
-                    RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_STOCK_KEY),
-                    RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY),
-                    RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_USER_KEY)
+                    RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, message.getMessageBody().getVoucherId()).getRelKey(),
+                    RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY, message.getMessageBody().getVoucherId()).getRelKey()
             );
             String[] args = new String[3];
             args[0] = message.getMessageBody().getVoucherId().toString();

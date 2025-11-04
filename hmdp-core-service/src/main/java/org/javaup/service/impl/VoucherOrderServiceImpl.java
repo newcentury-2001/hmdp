@@ -244,16 +244,16 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         SeckillVoucher seckillVoucher = seckillVoucherService.queryByVoucherId(voucherId);
         Long userId = UserHolder.getUser().getId();
         long orderId = snowflakeIdGenerator.nextId();
-        // 执行lua脚本
+        // 执行lua脚本（方案A：单槽位Hash Tag键，不分片）
         List<String> keys = ListUtil.of(
-                RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_STOCK_KEY),
-                RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_VOUCHER_KEY),
-                RedisKeyBuild.getRedisKey(RedisKeyManage.SECKILL_USER_KEY)
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId).getRelKey(),
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY, voucherId).getRelKey()
         );
-        String[] args = new String[3];
+        String[] args = new String[4];
         args[0] = voucherId.toString();
         args[1] = userId.toString();
-        args[2] = String.valueOf(orderId);
+        args[2] = String.valueOf(LocalDateTimeUtil.toEpochMilli(seckillVoucher.getBeginTime()));
+        args[3] = String.valueOf(LocalDateTimeUtil.toEpochMilli(seckillVoucher.getEndTime()));
         Integer result = seckillVoucherOperate.execute(
                 keys,
                 args
