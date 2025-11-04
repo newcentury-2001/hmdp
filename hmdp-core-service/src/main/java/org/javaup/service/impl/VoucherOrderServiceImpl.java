@@ -15,9 +15,11 @@ import org.javaup.dto.VoucherOrderDto;
 import org.javaup.entity.SeckillVoucher;
 import org.javaup.entity.VoucherOrder;
 import org.javaup.enums.BaseCode;
+import org.javaup.enums.LogType;
 import org.javaup.exception.HmdpFrameException;
 import org.javaup.kafka.message.SeckillVoucherMessage;
 import org.javaup.kafka.producer.SeckillVoucherProducer;
+import org.javaup.lua.SeckillVoucherDomain;
 import org.javaup.lua.SeckillVoucherOperate;
 import org.javaup.mapper.VoucherOrderMapper;
 import org.javaup.redis.RedisCacheImpl;
@@ -250,27 +252,37 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         SeckillVoucher seckillVoucher = seckillVoucherService.queryByVoucherId(voucherId);
         Long userId = UserHolder.getUser().getId();
         long orderId = snowflakeIdGenerator.nextId();
+        long traceId = snowflakeIdGenerator.nextId();
         // 执行lua脚本（方案A：单槽位Hash Tag键，不分片）
         List<String> keys = ListUtil.of(
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId).getRelKey(),
-                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY, voucherId).getRelKey()
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY, voucherId).getRelKey(),
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_TRACE_LOG_TAG_KEY, voucherId).getRelKey()
         );
-        String[] args = new String[4];
+        String[] args = new String[8];
         args[0] = voucherId.toString();
         args[1] = userId.toString();
         args[2] = String.valueOf(LocalDateTimeUtil.toEpochMilli(seckillVoucher.getBeginTime()));
         args[3] = String.valueOf(LocalDateTimeUtil.toEpochMilli(seckillVoucher.getEndTime()));
-        Integer result = seckillVoucherOperate.execute(
+        args[4] = String.valueOf(orderId);
+        args[5] = String.valueOf(traceId);
+        args[6] = String.valueOf(LogType.DEDUCT.getCode());
+        args[7] = String.valueOf(600);
+        SeckillVoucherDomain seckillVoucherDomain = seckillVoucherOperate.execute(
                 keys,
                 args
         );
-        if (!result.equals(BaseCode.SUCCESS.getCode())) {
-            throw new HmdpFrameException(Objects.requireNonNull(BaseCode.getRc(result)));
+        if (!seckillVoucherDomain.getCode().equals(BaseCode.SUCCESS.getCode())) {
+            throw new HmdpFrameException(Objects.requireNonNull(BaseCode.getRc(seckillVoucherDomain.getCode())));
         }
         SeckillVoucherMessage seckillVoucherMessage = new SeckillVoucherMessage(
                 userId,
                 voucherId,
-                orderId
+                orderId,
+                traceId,
+                seckillVoucherDomain.getBeforeQty(),
+                seckillVoucherDomain.getDeductQty(),
+                seckillVoucherDomain.getAfterQty()
         );
         // 发送kafka
         seckillVoucherProducer.sendPayload(SpringUtil.getPrefixDistinctionName() 

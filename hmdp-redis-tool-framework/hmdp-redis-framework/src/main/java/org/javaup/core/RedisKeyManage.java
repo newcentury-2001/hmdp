@@ -37,6 +37,11 @@ public enum RedisKeyManage {
      */
     SECKILL_VOUCHER_NULL_TAG_KEY("seckill:voucher_null:{%s}","秒杀券id（同槽位HashTag）","value为这是空值","k"),
     
+    /**
+     * 单槽位操作记录日志（带Hash Tag，voucherId在同槽位）
+     */
+    SECKILL_TRACE_LOG_TAG_KEY("seckill:trace:log:{%s}","秒杀券id（同槽位HashTag）","value为操作记录日志","k"),
+    
     DB_SECKILL_ORDER_KEY("db:seckill:order:%s","秒杀券的订单id","value为订单","k"),
     ;
 
