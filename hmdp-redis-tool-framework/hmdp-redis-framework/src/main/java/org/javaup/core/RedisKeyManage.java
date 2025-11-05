@@ -51,6 +51,16 @@ public enum RedisKeyManage {
      * 单槽位用户限流计数器（带Hash Tag，voucherId在同槽位）
      */
     SECKILL_LIMIT_USER_TAG_KEY("seckill:limit:user:{%s}:%s","秒杀券id（同槽位HashTag）","value为按用户的限流计数","k"),
+
+    /**
+     * 单槽位IP滑动窗口限流计数器（ZSET，voucherId在同槽位）
+     */
+    SECKILL_LIMIT_IP_SW_TAG_KEY("seckill:limit:ip:sw:{%s}:%s","秒杀券id（同槽位HashTag）","value为按IP的滑动窗口计数","k"),
+
+    /**
+     * 单槽位用户滑动窗口限流计数器（ZSET，voucherId在同槽位）
+     */
+    SECKILL_LIMIT_USER_SW_TAG_KEY("seckill:limit:user:sw:{%s}:%s","秒杀券id（同槽位HashTag）","value为按用户的滑动窗口计数","k"),
     
     DB_SECKILL_ORDER_KEY("db:seckill:order:%s","秒杀券的订单id","value为订单","k"),
     ;

@@ -2,6 +2,7 @@ package org.javaup.config;
 
 import org.javaup.execute.RedisRateLimitHandler;
 import org.javaup.lua.RateLimitOperate;
+import org.javaup.lua.SlidingRateLimitOperate;
 import org.javaup.redis.RedisCache;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -18,15 +19,22 @@ public class RateLimitAutoConfiguration {
     public RateLimitOperate rateLimitOperate(RedisCache redisCache){
         return new RateLimitOperate(redisCache);
     }
+    
+    @Bean
+    public SlidingRateLimitOperate slidingRateLimitOperate(RedisCache redisCache){
+        return new SlidingRateLimitOperate(redisCache);
+    }
 
     @Bean
     public RedisRateLimitHandler redisRateLimitHandler(SeckillRateLimitConfigProperties seckillRateLimitConfigProperties,
                                                        RedisCache redisCache,
-                                                       RateLimitOperate rateLimitOperate) {
+                                                       RateLimitOperate rateLimitOperate,
+                                                       SlidingRateLimitOperate slidingRateLimitOperate) {
         return new RedisRateLimitHandler(
                 seckillRateLimitConfigProperties, 
                 redisCache, 
-                rateLimitOperate
+                rateLimitOperate,
+                slidingRateLimitOperate
         );
     }
 }

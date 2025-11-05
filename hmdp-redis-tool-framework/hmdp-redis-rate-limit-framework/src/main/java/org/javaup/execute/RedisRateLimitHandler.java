@@ -6,6 +6,7 @@ import org.javaup.core.RedisKeyManage;
 import org.javaup.enums.BaseCode;
 import org.javaup.exception.HmdpFrameException;
 import org.javaup.lua.RateLimitOperate;
+import org.javaup.lua.SlidingRateLimitOperate;
 import org.javaup.redis.RedisCache;
 import org.javaup.redis.RedisKeyBuild;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -23,13 +24,16 @@ public class RedisRateLimitHandler implements RateLimitHandler {
     private final SeckillRateLimitConfigProperties seckillRateLimitConfigProperties;
     private final RedisCache redisCache;
     private final RateLimitOperate rateLimitOperate;
+    private final SlidingRateLimitOperate slidingRateLimitOperate;
 
     public RedisRateLimitHandler(SeckillRateLimitConfigProperties seckillRateLimitConfigProperties,
                                  RedisCache redisCache,
-                                 RateLimitOperate rateLimitOperate) {
+                                 RateLimitOperate rateLimitOperate,
+                                 SlidingRateLimitOperate slidingRateLimitOperate) {
         this.seckillRateLimitConfigProperties = seckillRateLimitConfigProperties;
         this.redisCache = redisCache;
         this.rateLimitOperate = rateLimitOperate;
+        this.slidingRateLimitOperate = slidingRateLimitOperate;
     }
 
     @Override
@@ -43,12 +47,19 @@ public class RedisRateLimitHandler implements RateLimitHandler {
         final int userLimitWindowMillis = seckillRateLimitConfigProperties.getUserWindowMillis();
         final int userLimitMaxAttempts = seckillRateLimitConfigProperties.getUserMaxAttempts();
 
-        // 构造 keys：可选的 IP 计数器 + 必选的用户计数器
+        // 构造 keys：根据是否启用滑动窗口决定 key 类型
         List<String> keys = new ArrayList<>(2);
+        boolean useSliding = Boolean.TRUE.equals(seckillRateLimitConfigProperties.getEnableSlidingWindow());
         if (Objects.nonNull(clientIp)) {
-            keys.add(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_IP_TAG_KEY, voucherId, clientIp).getRelKey());
+            String ipKey = useSliding
+                    ? RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_IP_SW_TAG_KEY, voucherId, clientIp).getRelKey()
+                    : RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_IP_TAG_KEY, voucherId, clientIp).getRelKey();
+            keys.add(ipKey);
         }
-        keys.add(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_USER_TAG_KEY, voucherId, userId).getRelKey());
+        String userKey = useSliding
+                ? RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_USER_SW_TAG_KEY, voucherId, userId).getRelKey()
+                : RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_USER_TAG_KEY, voucherId, userId).getRelKey();
+        keys.add(userKey);
 
         // 传递窗口与次数配置（毫秒）
         String[] args = new String[4];
@@ -57,7 +68,9 @@ public class RedisRateLimitHandler implements RateLimitHandler {
         args[2] = String.valueOf(userLimitWindowMillis);
         args[3] = String.valueOf(userLimitMaxAttempts);
 
-        Integer result = rateLimitOperate.execute(keys, args);
+        Integer result = useSliding
+                ? slidingRateLimitOperate.execute(keys, args)
+                : rateLimitOperate.execute(keys, args);
         if (BaseCode.SUCCESS.getCode().equals(result)) {
             return;
         }

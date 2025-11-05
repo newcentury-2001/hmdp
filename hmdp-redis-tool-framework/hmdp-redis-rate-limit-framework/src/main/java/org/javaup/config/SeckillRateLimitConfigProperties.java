@@ -12,6 +12,9 @@ public class SeckillRateLimitConfigProperties implements Serializable {
     
     public static final String PREFIX = "rate-limit";
 
+    /** 是否启用滑动窗口限流（默认关闭，使用固定窗口计数） */
+    private Boolean enableSlidingWindow = false;
+
     /** IP限流窗口毫秒数 */
     private Integer ipWindowMillis = 5000;
 
