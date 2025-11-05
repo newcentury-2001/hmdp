@@ -3,6 +3,10 @@ package org.javaup.config;
 import org.javaup.execute.RedisRateLimitHandler;
 import org.javaup.lua.RateLimitOperate;
 import org.javaup.lua.SlidingRateLimitOperate;
+import org.javaup.ratelimit.extension.NoOpRateLimitEventListener;
+import org.javaup.ratelimit.extension.NoOpRateLimitPenaltyPolicy;
+import org.javaup.ratelimit.extension.RateLimitEventListener;
+import org.javaup.ratelimit.extension.RateLimitPenaltyPolicy;
 import org.javaup.redis.RedisCache;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -26,15 +30,29 @@ public class RateLimitAutoConfiguration {
     }
 
     @Bean
+    public RateLimitEventListener rateLimitEventListener(){
+        return new NoOpRateLimitEventListener();
+    }
+
+    @Bean
+    public RateLimitPenaltyPolicy rateLimitPenaltyPolicy(){
+        return new NoOpRateLimitPenaltyPolicy();
+    }
+
+    @Bean
     public RedisRateLimitHandler redisRateLimitHandler(SeckillRateLimitConfigProperties seckillRateLimitConfigProperties,
                                                        RedisCache redisCache,
                                                        RateLimitOperate rateLimitOperate,
-                                                       SlidingRateLimitOperate slidingRateLimitOperate) {
+                                                       SlidingRateLimitOperate slidingRateLimitOperate,
+                                                       RateLimitEventListener rateLimitEventListener,
+                                                       RateLimitPenaltyPolicy rateLimitPenaltyPolicy) {
         return new RedisRateLimitHandler(
                 seckillRateLimitConfigProperties, 
                 redisCache, 
                 rateLimitOperate,
-                slidingRateLimitOperate
+                slidingRateLimitOperate,
+                rateLimitEventListener,
+                rateLimitPenaltyPolicy
         );
     }
 }

@@ -9,6 +9,9 @@ import org.javaup.lua.RateLimitOperate;
 import org.javaup.lua.SlidingRateLimitOperate;
 import org.javaup.redis.RedisCache;
 import org.javaup.redis.RedisKeyBuild;
+import org.javaup.ratelimit.extension.RateLimitContext;
+import org.javaup.ratelimit.extension.RateLimitEventListener;
+import org.javaup.ratelimit.extension.RateLimitPenaltyPolicy;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -25,21 +28,50 @@ public class RedisRateLimitHandler implements RateLimitHandler {
     private final RedisCache redisCache;
     private final RateLimitOperate rateLimitOperate;
     private final SlidingRateLimitOperate slidingRateLimitOperate;
+    private final RateLimitEventListener rateLimitEventListener;
+    private final RateLimitPenaltyPolicy rateLimitPenaltyPolicy;
 
     public RedisRateLimitHandler(SeckillRateLimitConfigProperties seckillRateLimitConfigProperties,
                                  RedisCache redisCache,
                                  RateLimitOperate rateLimitOperate,
-                                 SlidingRateLimitOperate slidingRateLimitOperate) {
+                                 SlidingRateLimitOperate slidingRateLimitOperate,
+                                 RateLimitEventListener rateLimitEventListener,
+                                 RateLimitPenaltyPolicy rateLimitPenaltyPolicy) {
         this.seckillRateLimitConfigProperties = seckillRateLimitConfigProperties;
         this.redisCache = redisCache;
         this.rateLimitOperate = rateLimitOperate;
         this.slidingRateLimitOperate = slidingRateLimitOperate;
+        this.rateLimitEventListener = rateLimitEventListener;
+        this.rateLimitPenaltyPolicy = rateLimitPenaltyPolicy;
     }
 
     @Override
     public void execute(Long voucherId, Long userId) {
-
         String clientIp = resolveClientIp();
+
+        // 1) 白名单前置放行
+        if (clientIp != null && seckillRateLimitConfigProperties.getIpWhitelist() != null
+                && seckillRateLimitConfigProperties.getIpWhitelist().contains(clientIp)) {
+            return;
+        }
+        if (userId != null && seckillRateLimitConfigProperties.getUserWhitelist() != null
+                && seckillRateLimitConfigProperties.getUserWhitelist().contains(userId)) {
+            return;
+        }
+
+        // 2) 封禁标记检查，存在则直接拒绝
+        if (Objects.nonNull(clientIp)) {
+            boolean ipBlocked = Boolean.TRUE.equals(redisCache.hasKey(
+                    RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_BLOCK_IP_TAG_KEY, voucherId, clientIp)));
+            if (ipBlocked) {
+                throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
+            }
+        }
+        boolean userBlocked = Boolean.TRUE.equals(redisCache.hasKey(
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_BLOCK_USER_TAG_KEY, voucherId, userId)));
+        if (userBlocked) {
+            throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
+        }
 
         // 使用 Lua 执行按 IP 与用户的限流（毫秒单位）
         final int ipLimitWindowMillis = seckillRateLimitConfigProperties.getIpWindowMillis();
@@ -68,16 +100,44 @@ public class RedisRateLimitHandler implements RateLimitHandler {
         args[2] = String.valueOf(userLimitWindowMillis);
         args[3] = String.valueOf(userLimitMaxAttempts);
 
+        // 构造上下文并触发执行前事件
+        RateLimitContext ctx = new RateLimitContext(
+                voucherId,
+                userId,
+                clientIp,
+                keys,
+                useSliding,
+                ipLimitWindowMillis,
+                ipLimitMaxAttempts,
+                userLimitWindowMillis,
+                userLimitMaxAttempts
+        );
+        try {
+            rateLimitEventListener.onBeforeExecute(ctx);
+        } catch (Exception ignore) {
+            // 扩展点异常不影响主流程
+        }
+
         Integer result = useSliding
                 ? slidingRateLimitOperate.execute(keys, args)
                 : rateLimitOperate.execute(keys, args);
+        ctx.setResult(result);
         if (BaseCode.SUCCESS.getCode().equals(result)) {
+            try { rateLimitEventListener.onAllowed(ctx); } catch (Exception ignore) {}
             return;
         }
         if (BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED.getCode().equals(result)) {
+            try {
+                rateLimitEventListener.onBlocked(ctx, BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
+                rateLimitPenaltyPolicy.apply(ctx, BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
+            } catch (Exception ignore) {}
             throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
         }
         if (BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED.getCode().equals(result)) {
+            try {
+                rateLimitEventListener.onBlocked(ctx, BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
+                rateLimitPenaltyPolicy.apply(ctx, BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
+            } catch (Exception ignore) {}
             throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
         }
         throw new HmdpFrameException("操作频繁，请稍后再试");

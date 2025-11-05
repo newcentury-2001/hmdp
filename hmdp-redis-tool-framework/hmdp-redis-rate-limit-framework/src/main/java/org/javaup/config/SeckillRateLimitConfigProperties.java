@@ -5,6 +5,8 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.io.Serializable;
+import java.util.Collections;
+import java.util.Set;
 
 @Data
 @ConfigurationProperties(prefix = SeckillRateLimitConfigProperties.PREFIX)
@@ -26,4 +28,10 @@ public class SeckillRateLimitConfigProperties implements Serializable {
 
     /** 用户最大尝试次数 */
     private Integer userMaxAttempts = 5;
+
+    /** IP白名单：命中则直接放行，不参与限流 */
+    private Set<String> ipWhitelist = Collections.emptySet();
+
+    /** 用户白名单：命中则直接放行，不参与限流 */
+    private Set<Long> userWhitelist = Collections.emptySet();
 }
