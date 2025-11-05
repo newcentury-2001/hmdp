@@ -21,6 +21,7 @@ import org.javaup.entity.VoucherOrder;
 import org.javaup.enums.BaseCode;
 import org.javaup.enums.LogType;
 import org.javaup.exception.HmdpFrameException;
+import org.javaup.execute.RateLimitHandler;
 import org.javaup.kafka.message.SeckillVoucherMessage;
 import org.javaup.kafka.producer.SeckillVoucherProducer;
 import org.javaup.lua.SeckillVoucherDomain;
@@ -110,6 +111,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     
     @Resource
     private IUserInfoService userInfoService;
+    
+    @Resource
+    private RateLimitHandler rateLimitHandler;
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
 
@@ -269,31 +273,31 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         SeckillVoucher seckillVoucher = seckillVoucherService.queryByVoucherId(voucherId);
         Long userId = UserHolder.getUser().getId();
         verifyUserLevel(seckillVoucher,userId);
-        
+        rateLimitHandler.execute(voucherId,userId);
         // 限流：按客户端IP与用户维度简单限频
-        final int IP_LIMIT_WINDOW_SECONDS = 5;
-        final int IP_LIMIT_MAX_ATTEMPTS = 3;
-        final int USER_LIMIT_WINDOW_SECONDS = 60;
-        final int USER_LIMIT_MAX_ATTEMPTS = 5;
-        String clientIp = resolveClientIp();
-        if (clientIp != null && !clientIp.isEmpty() && !"unknown".equalsIgnoreCase(clientIp)) {
-            RedisKeyBuild ipKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_IP_TAG_KEY, voucherId, clientIp);
-            Long ipCur = redisCache.incrBy(ipKey, 1);
-            if (ipCur != null && ipCur == 1L) {
-                redisCache.expire(ipKey, IP_LIMIT_WINDOW_SECONDS, TimeUnit.SECONDS);
-            }
-            if (ipCur != null && ipCur > IP_LIMIT_MAX_ATTEMPTS) {
-                throw new HmdpFrameException("请求过于频繁，请稍后再试");
-            }
-        }
-        RedisKeyBuild userKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_USER_TAG_KEY, voucherId, userId);
-        Long userCur = redisCache.incrBy(userKey, 1);
-        if (userCur != null && userCur == 1L) {
-            redisCache.expire(userKey, USER_LIMIT_WINDOW_SECONDS, TimeUnit.SECONDS);
-        }
-        if (userCur != null && userCur > USER_LIMIT_MAX_ATTEMPTS) {
-            throw new HmdpFrameException("操作过于频繁，请稍后再试");
-        }
+//        final int IP_LIMIT_WINDOW_SECONDS = 5;
+//        final int IP_LIMIT_MAX_ATTEMPTS = 3;
+//        final int USER_LIMIT_WINDOW_SECONDS = 60;
+//        final int USER_LIMIT_MAX_ATTEMPTS = 5;
+//        String clientIp = resolveClientIp();
+//        if (clientIp != null && !clientIp.isEmpty() && !"unknown".equalsIgnoreCase(clientIp)) {
+//            RedisKeyBuild ipKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_IP_TAG_KEY, voucherId, clientIp);
+//            Long ipCur = redisCache.incrBy(ipKey, 1);
+//            if (ipCur != null && ipCur == 1L) {
+//                redisCache.expire(ipKey, IP_LIMIT_WINDOW_SECONDS, TimeUnit.SECONDS);
+//            }
+//            if (ipCur != null && ipCur > IP_LIMIT_MAX_ATTEMPTS) {
+//                throw new HmdpFrameException("请求过于频繁，请稍后再试");
+//            }
+//        }
+//        RedisKeyBuild userKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_USER_TAG_KEY, voucherId, userId);
+//        Long userCur = redisCache.incrBy(userKey, 1);
+//        if (userCur != null && userCur == 1L) {
+//            redisCache.expire(userKey, USER_LIMIT_WINDOW_SECONDS, TimeUnit.SECONDS);
+//        }
+//        if (userCur != null && userCur > USER_LIMIT_MAX_ATTEMPTS) {
+//            throw new HmdpFrameException("操作过于频繁，请稍后再试");
+//        }
         long orderId = snowflakeIdGenerator.nextId();
         long traceId = snowflakeIdGenerator.nextId();
         // 执行lua脚本（方案A：单槽位Hash Tag键，不分片）

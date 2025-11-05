@@ -23,6 +23,10 @@ public enum BaseCode {
     
     SECKILL_VOUCHER_CLAIM(10006, "秒杀优惠券已领取"),
     
+    SECKILL_RATE_LIMIT_IP_EXCEEDED(10007, "请求过于频繁，请稍后再试"),
+    
+    SECKILL_RATE_LIMIT_USER_EXCEEDED(10008, "操作过于频繁，请稍后再试"),
+    
     USER_NOT_EXIST(20000, "用户不存在"),
     ;
     

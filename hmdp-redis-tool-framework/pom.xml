@@ -17,6 +17,7 @@
     <modules>
         <module>hmdp-redis-common-framework</module>
         <module>hmdp-redis-framework</module>
+        <module>hmdp-redis-rate-limit-framework</module>
     </modules>
 
 </project>
