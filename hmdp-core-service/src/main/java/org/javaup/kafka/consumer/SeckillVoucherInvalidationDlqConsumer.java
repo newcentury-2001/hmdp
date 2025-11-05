@@ -62,7 +62,7 @@ public class SeckillVoucherInvalidationDlqConsumer extends AbstractConsumerHandl
     )
     public void onMessage(String value,
                           @Headers Map<String, Object> headers,
-                          @Header(KafkaHeaders.RECEIVED_KEY) String key) {
+                          @Header(name = KafkaHeaders.RECEIVED_KEY, required = false) String key) {
         consumeRaw(value, key, headers);
     }
 

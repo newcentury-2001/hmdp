@@ -162,9 +162,9 @@ public abstract class AbstractConsumerHandler<T> {
         if (uuid != null) {
             message.setUuid(uuid);
         }
-        Date nowTime = root.getDate("nowTime");
-        if (nowTime != null) {
-            message.setProducerTime(nowTime);
+        Date producerTime = root.getDate("producerTime");
+        if (producerTime != null) {
+            message.setProducerTime(producerTime);
         }
         return message;
     }

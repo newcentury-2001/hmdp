@@ -21,7 +21,7 @@ spring:
     producer:
       retries: 1
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
     consumer:
       #默认的消费组ID
       group-id: create_voucher_order
