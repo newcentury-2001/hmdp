@@ -12,6 +12,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.javaup.core.RedisKeyManage;
 import org.javaup.core.SpringUtil;
+import org.javaup.dto.GetVoucherOrderDto;
 import org.javaup.dto.Result;
 import org.javaup.dto.VoucherOrderDto;
 import org.javaup.entity.SeckillVoucher;
@@ -440,6 +441,19 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 voucherOrder,
                 11, 
                 TimeUnit.SECONDS);
+    }
+    
+    @Override
+    public Long getSeckillVoucherOrder(final GetVoucherOrderDto getVoucherOrderDto) {
+        VoucherOrder voucherOrder = 
+                redisCache.get(RedisKeyBuild.createRedisKey(
+                        RedisKeyManage.DB_SECKILL_ORDER_KEY, 
+                        getVoucherOrderDto.getOrderId()), 
+                        VoucherOrder.class);
+        if (Objects.nonNull(voucherOrder)) {
+            return voucherOrder.getId();
+        }
+        return null;
     }
 
    /*

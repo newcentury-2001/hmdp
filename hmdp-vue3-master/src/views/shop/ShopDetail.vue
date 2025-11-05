@@ -2,8 +2,9 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ArrowLeft, ArrowRight, Location, Timer } from '@element-plus/icons-vue'
+import { ElLoading } from 'element-plus'
 import { getShopById } from '@/api/shop'
-import { getVoucherList, seckillVoucher } from '@/api/voucher'
+import { getVoucherList, seckillVoucher, getSeckillOrder } from '@/api/voucher'
 import { useUserStore } from '@/stores'
 
 const router = useRouter()
@@ -14,6 +15,28 @@ const rate = ref(4.5)
 // 响应式数据
 const shop = ref({})
 const vouchers = ref([])
+const seckillInProgress = ref(false)
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const pollSeckillOrder = async (orderId, { delay = 800, timeoutMs = 11000 } = {}) => {
+  const end = Date.now() + timeoutMs
+  while (Date.now() < end) {
+    try {
+      const { data } = await getSeckillOrder(String(orderId))
+      if (data) {
+        ElMessage.success('抢购成功')
+        return data
+      }
+    } catch (e) {
+      // 短暂异常，继续重试
+    }
+    const remaining = end - Date.now()
+    await sleep(Math.min(delay, Math.max(0, remaining)))
+  }
+  ElMessage.warning('确认订单超时，请稍后在订单页查看')
+  return null
+}
 
 // 获取店铺详情
 const queryShopById = async (shopId) => {
@@ -28,11 +51,11 @@ const queryShopById = async (shopId) => {
   }
 }
 
-// 获取优惠券列表
+// 获取优惠券列表（保持后端字段类型为字符串）
 const queryVoucher = async (shopId) => {
   try {
     const { data } = await getVoucherList(shopId)
-    vouchers.value = data
+    vouchers.value = data || []
   } catch (error) {
     console.error(error)
     ElMessage.error('获取优惠券列表失败')
@@ -65,9 +88,10 @@ const formatMinutes = (m) => {
   return m
 }
 
-// 格式化价格
+// 格式化价格，兼容字符串或数字
 const formatPrice = (price) => {
-  return price.toFixed(2)
+  const n = Number(price)
+  return Number.isFinite(n) ? n.toFixed(2) : '0.00'
 }
 
 // 判断是否未开始
@@ -100,17 +124,32 @@ const seckill = async (v) => {
     return
   }
 
-  if (v.stock < 1) {
+  if (Number(v.stock) < 1) {
     ElMessage.error('库存不足，请刷新再试试！')
     return
   }
 
+  let loading = null
   try {
+    if (seckillInProgress.value) {
+      ElMessage.info('正在确认订单，请稍等…')
+      return
+    }
+    seckillInProgress.value = true
+    loading = ElLoading.service({
+      text: '正在确认订单，请稍等…',
+      background: 'rgba(0,0,0,0.2)'
+    })
     const { data } = await seckillVoucher(v.id)
-    ElMessage.success('抢购成功，订单id：' + data)
+    // 开始轮询确认订单生成（固定时长 11 秒）
+    ElMessage.info('正在确认订单，请稍等…')
+    await pollSeckillOrder(String(data), { delay: 800, timeoutMs: 11000 })
   } catch (error) {
     console.error(error)
     ElMessage.error('抢购失败')
+  } finally {
+    seckillInProgress.value = false
+    if (loading) loading.close()
   }
 }
 

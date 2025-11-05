@@ -14,8 +14,17 @@ spring:
       database: 0
       host: 127.0.0.1
       port: 6379
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+    servlet:
+      load-on-startup: 1    
   jackson:
     default-property-inclusion: non_null # JSON处理时忽略非空字段
+    time-zone: GMT+8
+    date-format: yyyy-MM-dd HH:mm:ss
+    generator:
+      WRITE_NUMBERS_AS_STRINGS: true
   kafka:
     bootstrap-servers: localhost:9092
     producer:

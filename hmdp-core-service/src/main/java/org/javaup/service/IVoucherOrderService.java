@@ -1,9 +1,10 @@
 package org.javaup.service;
 
+import com.baomidou.mybatisplus.extension.service.IService;
+import org.javaup.dto.GetVoucherOrderDto;
 import org.javaup.dto.Result;
 import org.javaup.dto.VoucherOrderDto;
 import org.javaup.entity.VoucherOrder;
-import com.baomidou.mybatisplus.extension.service.IService;
 
 /**
  * <p>
@@ -20,4 +21,6 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
     void createVoucherOrderV1(VoucherOrder voucherOrder);
     
     void createVoucherOrderV2(VoucherOrderDto voucherOrderDto);
+    
+    Long getSeckillVoucherOrder(GetVoucherOrderDto getVoucherOrderDto);
 }
