@@ -46,101 +46,32 @@ public class RedisRateLimitHandler implements RateLimitHandler {
     }
 
     @Override
-    public void execute(Long voucherId, Long userId) {
+    public void execute(Long voucherId, 
+                        Long userId) {
         String clientIp = resolveClientIp();
 
-        // 1) 白名单前置放行
-        if (clientIp != null && seckillRateLimitConfigProperties.getIpWhitelist() != null
-                && seckillRateLimitConfigProperties.getIpWhitelist().contains(clientIp)) {
-            return;
-        }
-        if (userId != null && seckillRateLimitConfigProperties.getUserWhitelist() != null
-                && seckillRateLimitConfigProperties.getUserWhitelist().contains(userId)) {
+        if (isWhitelisted(userId, clientIp)) {
             return;
         }
 
-        // 2) 封禁标记检查，存在则直接拒绝
-        if (Objects.nonNull(clientIp)) {
-            boolean ipBlocked = Boolean.TRUE.equals(redisCache.hasKey(
-                    RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_BLOCK_IP_TAG_KEY, voucherId, clientIp)));
-            if (ipBlocked) {
-                throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
-            }
-        }
-        boolean userBlocked = Boolean.TRUE.equals(redisCache.hasKey(
-                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_BLOCK_USER_TAG_KEY, voucherId, userId)));
-        if (userBlocked) {
-            throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
-        }
+        checkBans(voucherId, userId, clientIp);
 
-        // 使用 Lua 执行按 IP 与用户的限流（毫秒单位）
-        final int ipLimitWindowMillis = seckillRateLimitConfigProperties.getIpWindowMillis();
-        final int ipLimitMaxAttempts = seckillRateLimitConfigProperties.getIpMaxAttempts();
-        final int userLimitWindowMillis = seckillRateLimitConfigProperties.getUserWindowMillis();
-        final int userLimitMaxAttempts = seckillRateLimitConfigProperties.getUserMaxAttempts();
+        int ipLimitWindowMillis = seckillRateLimitConfigProperties.getIpWindowMillis();
+        int ipLimitMaxAttempts = seckillRateLimitConfigProperties.getIpMaxAttempts();
+        int userLimitWindowMillis = seckillRateLimitConfigProperties.getUserWindowMillis();
+        int userLimitMaxAttempts = seckillRateLimitConfigProperties.getUserMaxAttempts();
 
-        // 构造 keys：根据是否启用滑动窗口决定 key 类型
-        List<String> keys = new ArrayList<>(2);
         boolean useSliding = Boolean.TRUE.equals(seckillRateLimitConfigProperties.getEnableSlidingWindow());
-        if (Objects.nonNull(clientIp)) {
-            String ipKey = useSliding
-                    ? RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_IP_SW_TAG_KEY, voucherId, clientIp).getRelKey()
-                    : RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_IP_TAG_KEY, voucherId, clientIp).getRelKey();
-            keys.add(ipKey);
-        }
-        String userKey = useSliding
-                ? RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_USER_SW_TAG_KEY, voucherId, userId).getRelKey()
-                : RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_USER_TAG_KEY, voucherId, userId).getRelKey();
-        keys.add(userKey);
+        List<String> keys = buildRateLimitKeys(voucherId, userId, clientIp, useSliding);
+        String[] args = buildArgs(ipLimitWindowMillis, ipLimitMaxAttempts, userLimitWindowMillis, userLimitMaxAttempts);
 
-        // 传递窗口与次数配置（毫秒）
-        String[] args = new String[4];
-        args[0] = String.valueOf(ipLimitWindowMillis);
-        args[1] = String.valueOf(ipLimitMaxAttempts);
-        args[2] = String.valueOf(userLimitWindowMillis);
-        args[3] = String.valueOf(userLimitMaxAttempts);
+        RateLimitContext ctx = buildContext(voucherId, userId, clientIp, keys, useSliding,
+                ipLimitWindowMillis, ipLimitMaxAttempts, userLimitWindowMillis, userLimitMaxAttempts);
+        safeBeforeExecute(ctx);
 
-        // 构造上下文并触发执行前事件
-        RateLimitContext ctx = new RateLimitContext(
-                voucherId,
-                userId,
-                clientIp,
-                keys,
-                useSliding,
-                ipLimitWindowMillis,
-                ipLimitMaxAttempts,
-                userLimitWindowMillis,
-                userLimitMaxAttempts
-        );
-        try {
-            rateLimitEventListener.onBeforeExecute(ctx);
-        } catch (Exception ignore) {
-            // 扩展点异常不影响主流程
-        }
-
-        Integer result = useSliding
-                ? slidingRateLimitOperate.execute(keys, args)
-                : rateLimitOperate.execute(keys, args);
+        Integer result = executeLua(useSliding, keys, args);
         ctx.setResult(result);
-        if (BaseCode.SUCCESS.getCode().equals(result)) {
-            try { rateLimitEventListener.onAllowed(ctx); } catch (Exception ignore) {}
-            return;
-        }
-        if (BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED.getCode().equals(result)) {
-            try {
-                rateLimitEventListener.onBlocked(ctx, BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
-                rateLimitPenaltyPolicy.apply(ctx, BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
-            } catch (Exception ignore) {}
-            throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
-        }
-        if (BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED.getCode().equals(result)) {
-            try {
-                rateLimitEventListener.onBlocked(ctx, BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
-                rateLimitPenaltyPolicy.apply(ctx, BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
-            } catch (Exception ignore) {}
-            throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
-        }
-        throw new HmdpFrameException("操作频繁，请稍后再试");
+        handleResult(ctx);
     }
     
     private String resolveClientIp(){
@@ -168,5 +99,112 @@ public class RedisRateLimitHandler implements RateLimitHandler {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private boolean isWhitelisted(Long userId, 
+                                  String clientIp) {
+        try {
+            return (clientIp != null && seckillRateLimitConfigProperties.getIpWhitelist() != null
+                    && seckillRateLimitConfigProperties.getIpWhitelist().contains(clientIp))
+                    || (userId != null && seckillRateLimitConfigProperties.getUserWhitelist() != null
+                    && seckillRateLimitConfigProperties.getUserWhitelist().contains(userId));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void checkBans(Long voucherId, 
+                           Long userId, 
+                           String clientIp) {
+        
+        if (Objects.nonNull(clientIp)) {
+            boolean ipBlocked = Boolean.TRUE.equals(redisCache.hasKey(
+                    RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_BLOCK_IP_TAG_KEY, voucherId, clientIp)));
+            if (ipBlocked) {
+                throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
+            }
+        }
+        boolean userBlocked = Boolean.TRUE.equals(redisCache.hasKey(
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_BLOCK_USER_TAG_KEY, voucherId, userId)));
+        if (userBlocked) {
+            throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
+        }
+    }
+
+    private List<String> buildRateLimitKeys(Long voucherId, 
+                                            Long userId, 
+                                            String clientIp, 
+                                            boolean useSliding) {
+        List<String> keys = new ArrayList<>(2);
+        if (Objects.nonNull(clientIp)) {
+            String ipKey = useSliding
+                    ? RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_IP_SW_TAG_KEY, voucherId, clientIp).getRelKey()
+                    : RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_IP_TAG_KEY, voucherId, clientIp).getRelKey();
+            keys.add(ipKey);
+        }
+        String userKey = useSliding
+                ? RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_USER_SW_TAG_KEY, voucherId, userId).getRelKey()
+                : RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_USER_TAG_KEY, voucherId, userId).getRelKey();
+        keys.add(userKey);
+        return keys;
+    }
+
+    private String[] buildArgs(int ipWindowMillis, 
+                               int ipMaxAttempts, 
+                               int userWindowMillis, 
+                               int userMaxAttempts) {
+        String[] args = new String[4];
+        args[0] = String.valueOf(ipWindowMillis);
+        args[1] = String.valueOf(ipMaxAttempts);
+        args[2] = String.valueOf(userWindowMillis);
+        args[3] = String.valueOf(userMaxAttempts);
+        return args;
+    }
+
+    private RateLimitContext buildContext(Long voucherId, 
+                                          Long userId, 
+                                          String clientIp, 
+                                          List<String> keys,
+                                          boolean useSliding,
+                                          int ipWindowMillis, int ipMaxAttempts,
+                                          int userWindowMillis, int userMaxAttempts) {
+        return new RateLimitContext(
+                voucherId,
+                userId,
+                clientIp,
+                keys,
+                useSliding,
+                ipWindowMillis,
+                ipMaxAttempts,
+                userWindowMillis,
+                userMaxAttempts
+        );
+    }
+
+    private void safeBeforeExecute(RateLimitContext ctx) {
+        rateLimitEventListener.onBeforeExecute(ctx);
+    }
+
+    private Integer executeLua(boolean useSliding, List<String> keys, String[] args) {
+        return useSliding ? slidingRateLimitOperate.execute(keys, args) : rateLimitOperate.execute(keys, args);
+    }
+
+    private void handleResult(RateLimitContext ctx) {
+        Integer result = ctx.getResult();
+        if (BaseCode.SUCCESS.getCode().equals(result)) {
+            rateLimitEventListener.onAllowed(ctx);
+            return;
+        }
+        if (BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED.getCode().equals(result)) {
+            rateLimitEventListener.onBlocked(ctx, BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
+            rateLimitPenaltyPolicy.apply(ctx, BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
+            throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_IP_EXCEEDED);
+        }
+        if (BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED.getCode().equals(result)) {
+            rateLimitEventListener.onBlocked(ctx, BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
+            rateLimitPenaltyPolicy.apply(ctx, BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
+            throw new HmdpFrameException(BaseCode.SECKILL_RATE_LIMIT_USER_EXCEEDED);
+        }
+        throw new HmdpFrameException("操作频繁，请稍后再试");
     }
 }

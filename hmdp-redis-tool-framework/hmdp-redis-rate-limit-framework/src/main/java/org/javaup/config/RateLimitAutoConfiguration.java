@@ -7,6 +7,7 @@ import org.javaup.ratelimit.extension.NoOpRateLimitEventListener;
 import org.javaup.ratelimit.extension.NoOpRateLimitPenaltyPolicy;
 import org.javaup.ratelimit.extension.RateLimitEventListener;
 import org.javaup.ratelimit.extension.RateLimitPenaltyPolicy;
+import org.javaup.ratelimit.extension.ThresholdPenaltyPolicy;
 import org.javaup.redis.RedisCache;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -35,7 +36,13 @@ public class RateLimitAutoConfiguration {
     }
 
     @Bean
-    public RateLimitPenaltyPolicy rateLimitPenaltyPolicy(){
+    public RateLimitPenaltyPolicy rateLimitPenaltyPolicy(SeckillRateLimitConfigProperties seckillRateLimitConfigProperties,
+                                                         RedisCache redisCache){
+        
+        Boolean enable = seckillRateLimitConfigProperties.getEnablePenalty();
+        if (Boolean.TRUE.equals(enable)) {
+            return new ThresholdPenaltyPolicy(redisCache, seckillRateLimitConfigProperties);
+        }
         return new NoOpRateLimitPenaltyPolicy();
     }
 

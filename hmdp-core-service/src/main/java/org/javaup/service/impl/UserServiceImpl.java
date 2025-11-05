@@ -54,7 +54,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     private SnowflakeIdGenerator snowflakeIdGenerator;
 
     @Override
-    public Result sendCode(String phone, HttpSession session) {
+    public Result<String> sendCode(String phone, HttpSession session) {
         // 1.校验手机号
         if (RegexUtils.isPhoneInvalid(phone)) {
             // 2.如果不符合，返回错误信息
@@ -69,11 +69,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         // 5.发送验证码
         log.info("发送短信验证码成功，验证码：{}", code);
         // 返回ok
-        return Result.ok();
+        return Result.ok(code);
     }
 
     @Override
-    public Result login(LoginFormDTO loginForm, HttpSession session) {
+    public Result<String> login(LoginFormDTO loginForm, HttpSession session) {
         // 1.校验手机号
         String phone = loginForm.getPhone();
         if (RegexUtils.isPhoneInvalid(phone)) {
@@ -121,7 +121,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     }
 
     @Override
-    public Result sign() {
+    public Result<Void> sign() {
         // 1.获取当前登录用户
         Long userId = UserHolder.getUser().getId();
         // 2.获取日期
@@ -137,7 +137,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     }
 
     @Override
-    public Result signCount() {
+    public Result<Integer> signCount() {
         // 1.获取当前登录用户
         Long userId = UserHolder.getUser().getId();
         // 2.获取日期

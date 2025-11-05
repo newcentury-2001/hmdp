@@ -9,7 +9,6 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.javaup.core.RedisKeyManage;
 import org.javaup.core.SpringUtil;
@@ -52,8 +51,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.Duration;
 import java.util.Arrays;
@@ -273,31 +270,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         SeckillVoucher seckillVoucher = seckillVoucherService.queryByVoucherId(voucherId);
         Long userId = UserHolder.getUser().getId();
         verifyUserLevel(seckillVoucher,userId);
+        //限流
         rateLimitHandler.execute(voucherId,userId);
-        // 限流：按客户端IP与用户维度简单限频
-//        final int IP_LIMIT_WINDOW_SECONDS = 5;
-//        final int IP_LIMIT_MAX_ATTEMPTS = 3;
-//        final int USER_LIMIT_WINDOW_SECONDS = 60;
-//        final int USER_LIMIT_MAX_ATTEMPTS = 5;
-//        String clientIp = resolveClientIp();
-//        if (clientIp != null && !clientIp.isEmpty() && !"unknown".equalsIgnoreCase(clientIp)) {
-//            RedisKeyBuild ipKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_IP_TAG_KEY, voucherId, clientIp);
-//            Long ipCur = redisCache.incrBy(ipKey, 1);
-//            if (ipCur != null && ipCur == 1L) {
-//                redisCache.expire(ipKey, IP_LIMIT_WINDOW_SECONDS, TimeUnit.SECONDS);
-//            }
-//            if (ipCur != null && ipCur > IP_LIMIT_MAX_ATTEMPTS) {
-//                throw new HmdpFrameException("请求过于频繁，请稍后再试");
-//            }
-//        }
-//        RedisKeyBuild userKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_LIMIT_USER_TAG_KEY, voucherId, userId);
-//        Long userCur = redisCache.incrBy(userKey, 1);
-//        if (userCur != null && userCur == 1L) {
-//            redisCache.expire(userKey, USER_LIMIT_WINDOW_SECONDS, TimeUnit.SECONDS);
-//        }
-//        if (userCur != null && userCur > USER_LIMIT_MAX_ATTEMPTS) {
-//            throw new HmdpFrameException("操作过于频繁，请稍后再试");
-//        }
         long orderId = snowflakeIdGenerator.nextId();
         long traceId = snowflakeIdGenerator.nextId();
         // 执行lua脚本（方案A：单槽位Hash Tag键，不分片）
@@ -377,33 +351,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
         if (!allowed) {
             throw new HmdpFrameException("当前会员级别不满足参与条件");
-        }
-    }
-
-    private String resolveClientIp(){
-        try {
-            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-            if (attrs == null) {
-                return "unknown";
-            }
-            HttpServletRequest request = attrs.getRequest();
-            String xff = request.getHeader("X-Forwarded-For");
-            if (xff != null && !xff.isEmpty()) {
-                String[] parts = xff.split(",");
-                if (parts.length > 0) {
-                    String ip = parts[0].trim();
-                    if (!ip.isEmpty()) {
-                        return ip;
-                    }
-                }
-            }
-            String realIp = request.getHeader("X-Real-IP");
-            if (realIp != null && !realIp.isEmpty()) {
-                return realIp;
-            }
-            return request.getRemoteAddr();
-        } catch (Exception e) {
-            return "unknown";
         }
     }
 
