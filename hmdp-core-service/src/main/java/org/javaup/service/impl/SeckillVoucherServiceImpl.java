@@ -1,6 +1,7 @@
 package org.javaup.service.impl;
 
 import cn.hutool.core.date.LocalDateTimeUtil;
+import org.javaup.cache.SeckillVoucherLocalCache;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -43,14 +44,25 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
     
     @Resource
     private BloomFilterHandlerFactory bloomFilterHandlerFactory;
+
+    @Resource
+    private SeckillVoucherLocalCache seckillVoucherLocalCache;
+
     
     @Override
     public SeckillVoucher queryByVoucherId(Long voucherId) {
+        // 先查本地缓存，命中则直接返回
+        SeckillVoucher localCacheHit = seckillVoucherLocalCache.get(voucherId);
+        if (Objects.nonNull(localCacheHit)) {
+            return localCacheHit;
+        }
         // 双重检测解决缓存击穿
         SeckillVoucher seckillVoucher =
                 redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId), SeckillVoucher.class);
         // 如果缓存中存在就直接返回
         if (Objects.nonNull(seckillVoucher)) {   
+            // 写入本地缓存，加快后续访问
+            seckillVoucherLocalCache.put(voucherId, seckillVoucher);
             return seckillVoucher;
         }
         log.info("查询秒杀优惠券 从Redis缓存没有查询到 秒杀优惠券的优惠券id : {}",voucherId);
@@ -110,6 +122,8 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
                     ttlSeconds,
                     TimeUnit.SECONDS
             );
+            // 同步写入本地缓存
+            seckillVoucherLocalCache.put(voucherId, seckillVoucher);
             return seckillVoucher;
         }finally {
             lock.unlock();
