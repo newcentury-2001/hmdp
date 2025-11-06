@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ArrowLeft, ArrowRight, Location, Timer } from '@element-plus/icons-vue'
 import { ElLoading } from 'element-plus'
 import { getShopById } from '@/api/shop'
-import { getVoucherList, seckillVoucher, getSeckillOrder } from '@/api/voucher'
+import { getVoucherList, seckillVoucher, getSeckillOrder, getVoucherOrderRouter } from '@/api/voucher'
 import { useUserStore } from '@/stores'
 
 const router = useRouter()
@@ -16,6 +16,34 @@ const rate = ref(4.5)
 const shop = ref({})
 const vouchers = ref([])
 const seckillInProgress = ref(false)
+// 已购状态映射：voucherId -> boolean
+const purchasedMap = ref({})
+
+const isPurchased = (voucherId) => {
+  return !!purchasedMap.value[String(voucherId)]
+}
+
+// 查询所有优惠券的已购状态（登录用户）
+const refreshPurchaseStatus = async () => {
+  try {
+    // 未登录则不检查，避免触发 401 重定向
+    if (!userStore.token) return
+    const list = vouchers.value || []
+    await Promise.all(
+      list.map(async (v) => {
+        if (!v?.id) return
+        try {
+          const res = await getVoucherOrderRouter(String(v.id))
+          purchasedMap.value[String(v.id)] = !!res?.data
+        } catch (e) {
+          // 忽略单项错误，保持既有状态
+        }
+      })
+    )
+  } catch (e) {
+    // 忽略总体错误
+  }
+}
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -56,6 +84,8 @@ const queryVoucher = async (shopId) => {
   try {
     const { data } = await getVoucherList(shopId)
     vouchers.value = data || []
+    // 加载后查询每张券的已购状态
+    await refreshPurchaseStatus()
   } catch (error) {
     console.error(error)
     ElMessage.error('获取优惠券列表失败')
@@ -129,6 +159,12 @@ const seckill = async (v) => {
     return
   }
 
+  // 已购则禁止重复抢购
+  if (isPurchased(v.id)) {
+    ElMessage.error('您已购买该券，不能重复购买')
+    return
+  }
+
   let loading = null
   try {
     if (seckillInProgress.value) {
@@ -146,7 +182,18 @@ const seckill = async (v) => {
     const res = await seckillVoucher(v.id)
     // 仅在秒杀接口返回成功时才进行轮询确认订单
     if (res && res.success) {
-      await pollSeckillOrder(String(res.data), { delay: 800, timeoutMs: 11000 })
+      const order = await pollSeckillOrder(String(res.data), { delay: 800, timeoutMs: 11000 })
+      // 成功拿到订单后，再次查询该券的已购状态并置灰按钮
+      if (order) {
+        try {
+          const check = await getVoucherOrderRouter(String(v.id))
+          if (check?.data) {
+            purchasedMap.value[String(v.id)] = true
+          }
+        } catch (e) {
+          // 忽略错误，不影响既有状态
+        }
+      }
     } else {
       ElMessage.error(res?.errorMsg || '抢购失败')
       return
@@ -283,7 +330,7 @@ onMounted(() => {
           <div v-if="v.type" class="seckill-box">
             <div
               class="voucher-btn"
-              :class="{ 'disable-btn': isNotBegin(v) || v.stock < 1 }"
+              :class="{ 'disable-btn': isNotBegin(v) || v.stock < 1 || isPurchased(v.id) }"
               @click="seckill(v)"
             >
               限时抢购

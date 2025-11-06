@@ -1,5 +1,6 @@
 package org.javaup.dto;
 
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -16,26 +17,14 @@ import java.io.Serializable;
  */
 @Data
 @EqualsAndHashCode(callSuper = false)
-public class VoucherOrderDto implements Serializable {
+public class GetVoucherOrderRouterDto implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
-
-    /**
-     * 主键
-     */
-    private Long id;
-
-    /**
-     * 下单的用户id
-     */
-    private Long userId;
-
-    /**
-     * 购买的代金券id
-     */
-    private Long voucherId;
     
-    private String messageId;
-
+    /**
+     * 优惠券id
+     */
+    @NotNull
+    private Long voucherId;
 }

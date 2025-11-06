@@ -7,3 +7,9 @@ export const getSeckillOrder = (orderId) =>
   request.post('/voucher-order/get/seckill/voucher/order', {
     orderId: String(orderId)
   })
+
+// 进入页面或秒杀成功后，查询用户是否已购买该优惠券
+export const getVoucherOrderRouter = (voucherId) =>
+  request.post('/voucher-order-router/get', {
+    voucherId: String(voucherId)
+  })

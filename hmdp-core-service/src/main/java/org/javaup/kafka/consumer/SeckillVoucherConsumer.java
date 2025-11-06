@@ -63,7 +63,8 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
         long producerTimeTimestamp = message.getProducerTime().getTime();
         long delayTime = System.currentTimeMillis() - producerTimeTimestamp;
         try {
-            Thread.sleep(5000);
+            //延长点时间，用来方便展示前端等待效果
+            Thread.sleep(3000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

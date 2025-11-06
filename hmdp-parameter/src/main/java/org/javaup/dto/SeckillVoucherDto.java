@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
@@ -23,6 +24,7 @@ import java.time.LocalDateTime;
 @Accessors(chain = true)
 public class SeckillVoucherDto implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     /**

@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 /**
@@ -18,6 +19,7 @@ import java.io.Serializable;
 @EqualsAndHashCode(callSuper = false)
 public class GetVoucherOrderDto implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     /**
