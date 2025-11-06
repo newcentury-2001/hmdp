@@ -104,6 +104,40 @@ LOCK TABLES `tb_follow` WRITE;
 UNLOCK TABLES;
 
 --
+-- Table structure for table `tb_rollback_failure_log`
+--
+
+DROP TABLE IF EXISTS `tb_rollback_failure_log`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `tb_rollback_failure_log` (
+  `id` bigint NOT NULL COMMENT '主键',
+  `voucher_id` bigint unsigned NOT NULL COMMENT '优惠券id',
+  `user_id` bigint unsigned NOT NULL COMMENT '用户id',
+  `order_id` bigint DEFAULT NULL COMMENT '订单id',
+  `trace_id` bigint DEFAULT NULL COMMENT '追踪唯一标识',
+  `detail` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '失败详情',
+  `result_code` int DEFAULT NULL COMMENT 'Lua返回码(BaseCode)',
+  `retry_attempts` int DEFAULT NULL COMMENT '已尝试的重试次数',
+  `source` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '来源组件',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_voucher_user` (`voucher_id`,`user_id`) USING BTREE,
+  KEY `idx_trace_id` (`trace_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=COMPACT COMMENT='Redis回滚失败日志表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `tb_rollback_failure_log`
+--
+
+LOCK TABLES `tb_rollback_failure_log` WRITE;
+/*!40000 ALTER TABLE `tb_rollback_failure_log` DISABLE KEYS */;
+/*!40000 ALTER TABLE `tb_rollback_failure_log` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `tb_seckill_voucher`
 --
 
@@ -130,7 +164,7 @@ CREATE TABLE `tb_seckill_voucher` (
 
 LOCK TABLES `tb_seckill_voucher` WRITE;
 /*!40000 ALTER TABLE `tb_seckill_voucher` DISABLE KEYS */;
-INSERT INTO `tb_seckill_voucher` VALUES (1985292621462933505,1,199,NULL,NULL,'2025-11-03 10:27:00','2025-11-02 13:00:00','2025-12-02 15:59:59','2025-11-05 10:14:26');
+INSERT INTO `tb_seckill_voucher` VALUES (1985292621462933505,1,195,NULL,NULL,'2025-11-03 10:27:00','2025-11-02 13:00:00','2025-12-02 15:59:59','2025-11-06 08:23:56');
 /*!40000 ALTER TABLE `tb_seckill_voucher` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -253,7 +287,7 @@ CREATE TABLE `tb_user` (
 
 LOCK TABLES `tb_user` WRITE;
 /*!40000 ALTER TABLE `tb_user` DISABLE KEYS */;
-INSERT INTO `tb_user` VALUES (1,'13686869696','','小鱼同学','/imgs/blogs/blog1.jpg','2021-12-24 02:27:19','2022-01-11 08:04:00'),(2,'13838411438','','可可今天不吃肉','/imgs/icons/kkjtbcr.jpg','2021-12-24 07:14:39','2021-12-28 11:58:04'),(4,'13456789011','','user_slxaxy2au9f3tanffaxr','','2022-01-07 04:07:53','2022-01-07 04:07:53'),(5,'13456789001','','可爱多','/imgs/icons/user5-icon.png','2022-01-07 08:11:33','2022-03-11 01:09:20');
+INSERT INTO `tb_user` VALUES (1,'13686869696','','小鱼同学','/imgs/blogs/blog1.jpg','2021-12-24 02:27:19','2022-01-11 08:04:00'),(2,'13838411438','','可可今天不吃肉','/imgs/icons/kkjtbcr.jpg','2021-12-24 07:14:39','2021-12-28 11:58:04'),(3,'13456789001','','可爱多','/imgs/icons/user5-icon.png','2022-01-07 08:11:33','2025-11-06 07:08:22');
 /*!40000 ALTER TABLE `tb_user` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -324,38 +358,6 @@ INSERT INTO `tb_voucher` VALUES (1,1,'50元代金券','周一至周日均可使�
 UNLOCK TABLES;
 
 --
--- Table structure for table `tb_voucher_deduct_log`
---
-
-DROP TABLE IF EXISTS `tb_voucher_deduct_log`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `tb_voucher_deduct_log` (
-  `id` bigint NOT NULL COMMENT '主键',
-  `order_id` bigint NOT NULL COMMENT '订单id',
-  `user_id` bigint unsigned NOT NULL COMMENT '下单的用户id',
-  `voucher_id` bigint unsigned NOT NULL COMMENT '购买的代金券id',
-  `result_code` int NOT NULL COMMENT 'Lua返回码，0成功，非0失败',
-  `trace_key` varchar(128) COLLATE utf8mb4_general_ci NOT NULL COMMENT 'Redis扣减日志键',
-  `trace_entry` varchar(1024) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '扣减日志内容JSON',
-  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`) USING BTREE,
-  KEY `idx_order_id` (`order_id`) USING BTREE,
-  KEY `idx_voucher_user` (`voucher_id`,`user_id`) USING BTREE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=COMPACT;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `tb_voucher_deduct_log`
---
-
-LOCK TABLES `tb_voucher_deduct_log` WRITE;
-/*!40000 ALTER TABLE `tb_voucher_deduct_log` DISABLE KEYS */;
-/*!40000 ALTER TABLE `tb_voucher_deduct_log` ENABLE KEYS */;
-UNLOCK TABLES;
-
---
 -- Table structure for table `tb_voucher_order`
 --
 
@@ -373,7 +375,8 @@ CREATE TABLE `tb_voucher_order` (
   `use_time` timestamp NULL DEFAULT NULL COMMENT '核销时间',
   `refund_time` timestamp NULL DEFAULT NULL COMMENT '退款时间',
   `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`) USING BTREE
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `tb_voucher_order_user_id_voucher_id_IDX` (`user_id`,`voucher_id`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=COMPACT;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -383,7 +386,36 @@ CREATE TABLE `tb_voucher_order` (
 
 LOCK TABLES `tb_voucher_order` WRITE;
 /*!40000 ALTER TABLE `tb_voucher_order` DISABLE KEYS */;
+INSERT INTO `tb_voucher_order` VALUES (1986348799030804482,1985281153640185857,1,1,1,'2025-11-06 08:23:56',NULL,NULL,NULL,'2025-11-06 08:23:56');
 /*!40000 ALTER TABLE `tb_voucher_order` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `tb_voucher_order_router`
+--
+
+DROP TABLE IF EXISTS `tb_voucher_order_router`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `tb_voucher_order_router` (
+  `id` bigint NOT NULL COMMENT '主键',
+  `order_id` bigint NOT NULL COMMENT '订单id',
+  `user_id` bigint unsigned NOT NULL COMMENT '用户id',
+  `voucher_id` bigint unsigned NOT NULL COMMENT '代金券id',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=COMPACT;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `tb_voucher_order_router`
+--
+
+LOCK TABLES `tb_voucher_order_router` WRITE;
+/*!40000 ALTER TABLE `tb_voucher_order_router` DISABLE KEYS */;
+INSERT INTO `tb_voucher_order_router` VALUES (1986348812209307650,1986348799030804482,1985281153640185857,1,'2025-11-06 08:23:56','2025-11-06 08:23:56');
+/*!40000 ALTER TABLE `tb_voucher_order_router` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -422,30 +454,21 @@ CREATE TABLE `tb_voucher_reconcile_log` (
 
 LOCK TABLES `tb_voucher_reconcile_log` WRITE;
 /*!40000 ALTER TABLE `tb_voucher_reconcile_log` DISABLE KEYS */;
+INSERT INTO `tb_voucher_reconcile_log` VALUES (1986290267426168834,1986290245347352578,1985281153640185857,1,'977afed0-e1dc-498f-8201-a8558ada75d6','order created',197,1,196,1986290245347352579,-1,1,1,'2025-11-06 04:31:18','2025-11-06 04:31:18'),(1986315068580622337,1986315046665383938,1985281153640185857,1,'4e2681e1-d2e2-4cee-be14-1659269a63ba','order created',198,1,197,1986315046665383939,-1,1,1,'2025-11-06 06:09:51','2025-11-06 06:09:51'),(1986318026970046465,1986318013929955330,1985281153640185857,1,'4ef52a2d-21a8-4596-85f2-473825329f29','order created',197,1,196,1986318013929955331,-1,1,1,'2025-11-06 06:21:36','2025-11-06 06:21:36'),(1986348812234473474,1986348799030804482,1985281153640185857,1,'cf566b17-4554-4023-b7cc-52966b951619','order created',196,1,195,1986348799030804483,-1,1,1,'2025-11-06 08:23:56','2025-11-06 08:23:56');
 /*!40000 ALTER TABLE `tb_voucher_reconcile_log` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
--- Table structure for table `tb_rollback_failure_log`
+-- Dumping routines for database 'hmdp'
 --
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
-DROP TABLE IF EXISTS `tb_rollback_failure_log`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `tb_rollback_failure_log` (
-  `id` bigint NOT NULL COMMENT '主键',
-  `voucher_id` bigint unsigned NOT NULL COMMENT '优惠券id',
-  `user_id` bigint unsigned NOT NULL COMMENT '用户id',
-  `order_id` bigint DEFAULT NULL COMMENT '订单id',
-  `trace_id` bigint DEFAULT NULL COMMENT '追踪唯一标识',
-  `detail` varchar(1024) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '失败详情',
-  `result_code` int DEFAULT NULL COMMENT 'Lua返回码(BaseCode)',
-  `retry_attempts` int DEFAULT NULL COMMENT '已尝试的重试次数',
-  `source` varchar(64) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '来源组件',
-  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`) USING BTREE,
-  KEY `idx_voucher_user` (`voucher_id`,`user_id`) USING BTREE,
-  KEY `idx_trace_id` (`trace_id`) USING BTREE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=COMPACT COMMENT='Redis回滚失败日志表';
-/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Dump completed on 2025-11-06 18:34:10
