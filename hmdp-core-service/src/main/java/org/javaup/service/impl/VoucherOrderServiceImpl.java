@@ -243,7 +243,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
      * 抢优惠券下单
      * */
     @Override
-    public Result seckillVoucher(Long voucherId) {
+    public Result<Long> seckillVoucher(Long voucherId) {
         //黑马点评原始版版本
         //return doSeckillVoucherV1(voucherId);
         //黑马点评升级版本
