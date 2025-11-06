@@ -41,6 +41,8 @@ public abstract class AbstractProducerHandler<M extends MessageExtend<?>> {
      *
      * <p>方法内部会在发送完成后调用扩展钩子：成功则调用 {@link #afterSendSuccess(SendResult)}；
      * 失败则调用 {@link #afterSendFailure(String, MessageExtend, Throwable)}。</p>
+     * <p>同时对同步异常进行处理：若 {@code kafkaTemplate.send(...)} 在提交阶段直接抛出异常，
+     * 会立即触发 {@link #afterSendFailure(String, MessageExtend, Throwable)}，并返回一个已完成异常的 {@link CompletableFuture}。</p>
      *
      * @param topic   目标主题，不能为空
      * @param message 已包装的消息对象，不能为空
@@ -49,14 +51,22 @@ public abstract class AbstractProducerHandler<M extends MessageExtend<?>> {
     public final CompletableFuture<SendResult<String, M>> sendMqMessage(String topic, M message) {
         Assert.hasText(topic, "topic must not be blank");
         Assert.notNull(message, "message must not be null");
-
-        return kafkaTemplate.send(topic, message).whenComplete((result, throwable) -> {
-            if (throwable == null) {
-                afterSendSuccess(result);
-            } else {
-                afterSendFailure(topic, message, throwable);
-            }
-        });
+        try {
+            CompletableFuture<SendResult<String, M>> future = kafkaTemplate.send(topic, message);
+            return future.whenComplete((result, throwable) -> {
+                if (throwable == null) {
+                    afterSendSuccess(result);
+                } else {
+                    afterSendFailure(topic, message, throwable);
+                }
+            });
+        } catch (Exception ex) {
+            // 处理同步发送阶段抛出的异常
+            afterSendFailure(topic, message, ex);
+            CompletableFuture<SendResult<String, M>> failed = new CompletableFuture<>();
+            failed.completeExceptionally(ex);
+            return failed;
+        }
     }
 
     /**
@@ -113,13 +123,22 @@ public abstract class AbstractProducerHandler<M extends MessageExtend<?>> {
             });
         }
 
-        return kafkaTemplate.send(record).whenComplete((result, throwable) -> {
-            if (throwable == null) {
-                afterSendSuccess(result);
-            } else {
-                afterSendFailure(topic, message, throwable);
-            }
-        });
+        try {
+            CompletableFuture<SendResult<String, M>> future = kafkaTemplate.send(record);
+            return future.whenComplete((result, throwable) -> {
+                if (throwable == null) {
+                    afterSendSuccess(result);
+                } else {
+                    afterSendFailure(topic, message, throwable);
+                }
+            });
+        } catch (Exception ex) {
+            // 处理同步发送阶段抛出的异常
+            afterSendFailure(topic, message, ex);
+            CompletableFuture<SendResult<String, M>> failed = new CompletableFuture<>();
+            failed.completeExceptionally(ex);
+            return failed;
+        }
     }
 
     /**
