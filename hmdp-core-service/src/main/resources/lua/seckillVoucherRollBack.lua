@@ -11,10 +11,9 @@ local voucherId = ARGV[1]
 local userId = ARGV[2]
 -- 订单id（回滚脚本不使用，但保留以兼容消息）
 local orderId = ARGV[3]
-local traceId = ARGV[4]
-local logType = ARGV[5]
--- 日志TTL（秒）
-local ttlSeconds = tonumber(ARGV[6])
+local seckillVoucherOrderOperate = ARGV[4]
+local traceId = ARGV[5]
+local logType = ARGV[6]
 -- 备注：方案A不分片，所有操作在同槽位单键内完成
 
 -- 3.脚本业务
@@ -28,8 +27,10 @@ local beforeQty = tonumber(stock)
 local changeQty = 1
 local afterQty = beforeQty + changeQty
 redis.call('incrby', stockKey, changeQty)
--- 删除下单记录
-redis.call('srem', seckillUserKey, userId)
+if seckillVoucherOrderOperate == 1 then
+    -- 删除下单记录
+    redis.call('srem', seckillUserKey, userId)
+end
 -- 记录回滚日志
 local timeArr = redis.call('TIME')
 local nowMillis = tonumber(timeArr[1]) * 1000 + math.floor(tonumber(timeArr[2]) / 1000)
@@ -45,7 +46,4 @@ local logEntry = cjson.encode({
     afterQty = afterQty
 })
 redis.call('hset', traceLogKey, traceId, logEntry)
-if ttlSeconds and ttlSeconds > 0 then
-  redis.call('expire', traceLogKey, ttlSeconds)
-end
 return 0

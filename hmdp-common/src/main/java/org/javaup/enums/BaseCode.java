@@ -28,6 +28,8 @@ public enum BaseCode {
     SECKILL_RATE_LIMIT_USER_EXCEEDED(10008, "操作过于频繁，请稍后再试"),
     
     USER_NOT_EXIST(20000, "用户不存在"),
+    
+    USER_ALREADY_PURCHASE(20001, "用户已经购买"),
     ;
     
     private final Integer code;

@@ -20,7 +20,7 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
 
     void createVoucherOrderV1(VoucherOrder voucherOrder);
     
-    void createVoucherOrderV2(VoucherOrderDto voucherOrderDto);
+    boolean createVoucherOrderV2(VoucherOrderDto voucherOrderDto);
     
     Long getSeckillVoucherOrder(GetVoucherOrderDto getVoucherOrderDto);
 }

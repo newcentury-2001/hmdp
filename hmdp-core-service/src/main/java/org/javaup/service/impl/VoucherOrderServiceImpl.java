@@ -24,6 +24,7 @@ import org.javaup.exception.HmdpFrameException;
 import org.javaup.execute.RateLimitHandler;
 import org.javaup.kafka.message.SeckillVoucherMessage;
 import org.javaup.kafka.producer.SeckillVoucherProducer;
+import org.javaup.kafka.redis.RedisVoucherData;
 import org.javaup.lua.SeckillVoucherDomain;
 import org.javaup.lua.SeckillVoucherOperate;
 import org.javaup.mapper.VoucherOrderMapper;
@@ -112,6 +113,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     
     @Resource
     private RateLimitHandler rateLimitHandler;
+    
+    @Resource
+    private RedisVoucherData redisVoucherData;
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
 
@@ -289,7 +293,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         args[4] = String.valueOf(orderId);
         args[5] = String.valueOf(traceId);
         args[6] = String.valueOf(LogType.DEDUCT.getCode());
-        args[7] = String.valueOf(600);
+        long secondsUntilEnd = Duration.between(LocalDateTimeUtil.now(), seckillVoucher.getEndTime()).getSeconds();
+        long ttlSeconds = Math.max(1L, secondsUntilEnd + Duration.ofDays(1).getSeconds());
+        args[7] = String.valueOf(ttlSeconds);
         SeckillVoucherDomain seckillVoucherDomain = seckillVoucherOperate.execute(
                 keys,
                 args
@@ -405,9 +411,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Override
     @RepeatExecuteLimit(name = SECKILL_VOUCHER_ORDER,keys = {"#voucherOrderDto.messageId"})
     @Transactional(rollbackFor = Exception.class)
-    public void createVoucherOrderV2(VoucherOrderDto voucherOrderDto) {
+    public boolean createVoucherOrderV2(VoucherOrderDto voucherOrderDto) {
         Long userId = voucherOrderDto.getUserId();
-        
         // 查询订单
         Long count = lambdaQuery().eq(VoucherOrder::getUserId, userId)
                 .eq(VoucherOrder::getVoucherId, voucherOrderDto.getVoucherId())
@@ -415,8 +420,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         // 判断是否存在
         if (count > 0) {
             // 用户已经购买过了
-            log.info("用户已经购买过一次！");
-            return;
+            log.warn("用户已购买，用户id：{}",userId);
+            return false;
         }
         // 扣减库存
         boolean success = seckillVoucherService.update()
@@ -440,7 +445,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 RedisKeyManage.DB_SECKILL_ORDER_KEY,voucherOrderDto.getId()),
                 voucherOrder,
                 11, 
-                TimeUnit.SECONDS);
+                TimeUnit.SECONDS
+        );
+        return true;
     }
     
     @Override
