@@ -14,6 +14,7 @@ import org.javaup.message.MessageExtend;
 import org.javaup.service.IVoucherOrderService;
 import org.javaup.service.IVoucherReconcileLogService;
 import org.javaup.toolkit.SnowflakeIdGenerator;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
@@ -99,8 +100,9 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
         voucherOrderDto.setUserId(messageBody.getUserId());
         voucherOrderDto.setVoucherId(messageBody.getVoucherId());
         voucherOrderDto.setMessageId(message.getUuid());
-        boolean result = voucherOrderService.createVoucherOrderV2(voucherOrderDto);
-        if (!result) {
+        try {
+            voucherOrderService.createVoucherOrderV2(voucherOrderDto);
+        }catch (DuplicateKeyException e){
             long traceId = snowflakeIdGenerator.nextId();
             redisVoucherData.rollbackRedisVoucherData(
                     SeckillVoucherOrderOperate.NO,

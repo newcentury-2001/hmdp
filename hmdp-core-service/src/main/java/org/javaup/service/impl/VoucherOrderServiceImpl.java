@@ -413,16 +413,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Transactional(rollbackFor = Exception.class)
     public boolean createVoucherOrderV2(VoucherOrderDto voucherOrderDto) {
         Long userId = voucherOrderDto.getUserId();
-        // 查询订单
-        Long count = lambdaQuery().eq(VoucherOrder::getUserId, userId)
-                .eq(VoucherOrder::getVoucherId, voucherOrderDto.getVoucherId())
-                .count();
-        // 判断是否存在
-        if (count > 0) {
-            // 用户已经购买过了
-            log.warn("用户已购买，用户id：{}",userId);
-            return false;
-        }
+
         // 扣减库存
         boolean success = seckillVoucherService.update()
                 // set stock = stock - 1
