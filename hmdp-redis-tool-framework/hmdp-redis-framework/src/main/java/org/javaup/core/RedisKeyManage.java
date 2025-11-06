@@ -83,6 +83,9 @@ public enum RedisKeyManage {
     SECKILL_VIOLATION_USER_TAG_KEY("seckill:violation:user:{%s}:%s","秒杀券id（同槽位HashTag）","value为按用户的违规计数","k"),
     
     DB_SECKILL_ORDER_KEY("db:seckill:order:%s","秒杀券的订单id","value为订单","k"),
+    
+    SECKILL_ROLLBACK_ALERT_DEDUP_KEY("seckill:rollback:alert:dedup:%s","秒杀券的id","value为1","k"),
+    
     ;
 
     /**

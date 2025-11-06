@@ -21,13 +21,23 @@ import java.util.Objects;
 import static org.javaup.constant.Constant.SECKILL_VOUCHER_CACHE_INVALIDATION_TOPIC;
 import static org.javaup.constant.Constant.SPRING_INJECT_PREFIX_DISTINCTION_NAME;
 
+
+/**
+ * Kafka 消费者：接收“秒杀券缓存失效”广播并执行本地/Redis缓存清理。
+ * 负责：
+ * 1) 失效本地缓存，缩短不一致窗口；
+ * 2) 幂等删除 Redis 的券详情、库存、空值键；
+ * 3) 记录结构化日志，异常场景打印警告。
+ */
 @Slf4j
 @Component
 public class SeckillVoucherInvalidationConsumer extends AbstractConsumerHandler<SeckillVoucherInvalidationMessage> {
 
+    // 本地缓存：用于当前实例的快速读取
     @Resource
     private SeckillVoucherLocalCache seckillVoucherLocalCache;
 
+    // Redis 缓存：用于跨实例共享的券详情与库存
     @Resource
     private RedisCache redisCache;
 
@@ -35,6 +45,9 @@ public class SeckillVoucherInvalidationConsumer extends AbstractConsumerHandler<
         super(SeckillVoucherInvalidationMessage.class);
     }
 
+    /**
+     * Kafka 消息入口：转交统一消费流程。
+     */
     @KafkaListener(
             topics = {SPRING_INJECT_PREFIX_DISTINCTION_NAME + "-" + SECKILL_VOUCHER_CACHE_INVALIDATION_TOPIC},
             groupId = "${prefix.distinction.name:hmdp}-seckill_voucher_cache_invalidation-${random.uuid}"
@@ -46,6 +59,9 @@ public class SeckillVoucherInvalidationConsumer extends AbstractConsumerHandler<
     }
 
     @Override
+    /**
+     * 核心消费：校验载荷 -> 本地缓存失效 -> Redis 幂等删除 -> 记录日志。
+     */
     protected void doConsume(MessageExtend<SeckillVoucherInvalidationMessage> message) {
         SeckillVoucherInvalidationMessage body = message.getMessageBody();
         if (Objects.isNull(body.getVoucherId())) {

@@ -26,21 +26,35 @@ import java.util.Map;
 import static org.javaup.constant.Constant.SECKILL_VOUCHER_TOPIC;
 import static org.javaup.constant.Constant.SPRING_INJECT_PREFIX_DISTINCTION_NAME;
 
+
+/**
+ * Kafka 消费者：处理秒杀券下单消息。
+ * 负责：
+ * 1) 延迟过滤：超过阈值的消息丢弃并回滚；
+ * 2) 正常消费：创建订单，幂等冲突时执行回滚；
+ * 3) 失败处理：消费异常时回滚并记录对账日志；
+ * 4) 成功处理：消费成功记录一致性对账日志。
+ */
 @Slf4j
 @Component
 public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVoucherMessage> {
     
+    // 消息延迟阈值（毫秒），超过阈值则丢弃并回滚
     public static Long MESSAGE_DELAY_TIME = 10000L;
     
+    // 订单服务：负责创建秒杀订单
     @Resource
     private IVoucherOrderService voucherOrderService;
     
+    // Redis 回滚封装组件：包含 Lua 调用、指数退避重试与失败日志
     @Resource
     private RedisVoucherData redisVoucherData;
     
+    // 对账日志服务：记录消费成功/失败等业务一致性日志
     @Resource
     private IVoucherReconcileLogService voucherReconcileLogService;
     
+    // 雪花算法：生成贯穿回滚/日志的 traceId
     @Resource
     private SnowflakeIdGenerator snowflakeIdGenerator;
     
@@ -49,6 +63,9 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
         super(SeckillVoucherMessage.class);
     }
     
+    /**
+     * Kafka 消息入口：委托框架转换并进入统一消费流程。
+     */
     @KafkaListener(
             topics = {SPRING_INJECT_PREFIX_DISTINCTION_NAME + "-" + SECKILL_VOUCHER_TOPIC}
     )
@@ -59,6 +76,10 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
     }
     
     @Override
+    /**
+     * 消费前置过滤：若消息延迟超过阈值则丢弃并回滚，同时记录对账日志。
+     * 返回 true 继续消费；返回 false 中断后续消费流程。
+     */
     protected Boolean beforeConsume(MessageExtend<SeckillVoucherMessage> message) {
         long producerTimeTimestamp = message.getProducerTime().getTime();
         long delayTime = System.currentTimeMillis() - producerTimeTimestamp;
@@ -94,6 +115,9 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
     }
     
     @Override
+    /**
+     * 核心消费：尝试创建订单，若出现幂等冲突(DuplicateKeyException)则执行回滚。
+     */
     protected void doConsume(MessageExtend<SeckillVoucherMessage> message) {
         SeckillVoucherMessage messageBody = message.getMessageBody();
         VoucherOrderDto voucherOrderDto = new VoucherOrderDto();
@@ -116,6 +140,9 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
     }
     
     @Override
+    /**
+     * 失败后处理：消费异常时回滚 Redis 并记录对账日志（异常）。
+     */
     protected void afterConsumeFailure(final MessageExtend<SeckillVoucherMessage> message, 
                                        final Throwable throwable) {
         super.afterConsumeFailure(message, throwable);
@@ -141,6 +168,9 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
     }
     
     @Override
+    /**
+     * 成功后处理：消费成功记录对账日志（扣减一致）。
+     */
     protected void afterConsumeSuccess(MessageExtend<SeckillVoucherMessage> message) {
         super.afterConsumeSuccess(message);
         // 对账日志：一致-消费成功
@@ -155,6 +185,9 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
         }
     }
     
+    /**
+     * 构建并保存对账日志：根据日志类型设置数量字段，记录业务过程数据。
+     */
     private void saveReconcileLog(LogType logType,
                                   Integer businessType, 
                                   String detail, 

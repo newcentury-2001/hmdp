@@ -426,16 +426,26 @@ LOCK TABLES `tb_voucher_reconcile_log` WRITE;
 UNLOCK TABLES;
 
 --
--- Dumping routines for database 'hmdp'
+-- Table structure for table `tb_rollback_failure_log`
 --
-/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
-/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
-/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
-/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
-/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
-
--- Dump completed on 2025-11-05 18:57:29
+DROP TABLE IF EXISTS `tb_rollback_failure_log`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `tb_rollback_failure_log` (
+  `id` bigint NOT NULL COMMENT '主键',
+  `voucher_id` bigint unsigned NOT NULL COMMENT '优惠券id',
+  `user_id` bigint unsigned NOT NULL COMMENT '用户id',
+  `order_id` bigint DEFAULT NULL COMMENT '订单id',
+  `trace_id` bigint DEFAULT NULL COMMENT '追踪唯一标识',
+  `detail` varchar(1024) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '失败详情',
+  `result_code` int DEFAULT NULL COMMENT 'Lua返回码(BaseCode)',
+  `retry_attempts` int DEFAULT NULL COMMENT '已尝试的重试次数',
+  `source` varchar(64) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '来源组件',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_voucher_user` (`voucher_id`,`user_id`) USING BTREE,
+  KEY `idx_trace_id` (`trace_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=COMPACT COMMENT='Redis回滚失败日志表';
+/*!40101 SET character_set_client = @saved_cs_client */;

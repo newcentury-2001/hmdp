@@ -306,8 +306,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 seckillVoucherDomain.getAfterQty()
         );
         // 发送kafka
-        seckillVoucherProducer.sendPayload(SpringUtil.getPrefixDistinctionName() 
-                        + "-" + SECKILL_VOUCHER_TOPIC, 
+        seckillVoucherProducer.sendPayload(
+                SpringUtil.getPrefixDistinctionName() + "-" + SECKILL_VOUCHER_TOPIC, 
                 seckillVoucherMessage);
         
         // 返回订单id
