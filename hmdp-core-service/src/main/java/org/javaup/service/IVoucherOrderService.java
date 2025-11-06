@@ -1,6 +1,8 @@
 package org.javaup.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import org.javaup.dto.CancelVoucherOrderDto;
+import org.javaup.dto.GetVoucherOrderByVoucherIdDto;
 import org.javaup.dto.GetVoucherOrderDto;
 import org.javaup.dto.Result;
 import org.javaup.dto.VoucherOrderDto;
@@ -23,4 +25,8 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
     boolean createVoucherOrderV2(VoucherOrderDto voucherOrderDto);
     
     Long getSeckillVoucherOrder(GetVoucherOrderDto getVoucherOrderDto);
+    
+    Boolean cancel(CancelVoucherOrderDto cancelVoucherOrderDto);
+    
+    Long getSeckillVoucherOrderIdByVoucherId(GetVoucherOrderByVoucherIdDto getVoucherOrderByVoucherIdDto);
 }

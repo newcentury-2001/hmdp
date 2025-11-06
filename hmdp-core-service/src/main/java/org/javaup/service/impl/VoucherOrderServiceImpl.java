@@ -12,6 +12,8 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.javaup.core.RedisKeyManage;
 import org.javaup.core.SpringUtil;
+import org.javaup.dto.CancelVoucherOrderDto;
+import org.javaup.dto.GetVoucherOrderByVoucherIdDto;
 import org.javaup.dto.GetVoucherOrderDto;
 import org.javaup.dto.Result;
 import org.javaup.dto.VoucherOrderDto;
@@ -459,6 +461,23 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (Objects.nonNull(voucherOrderRouter)) {
             return voucherOrderRouter.getOrderId();
         }
+        return null;
+    }
+    
+    @Override
+    public Long getSeckillVoucherOrderIdByVoucherId(GetVoucherOrderByVoucherIdDto getVoucherOrderByVoucherIdDto) {
+        VoucherOrder voucherOrder = lambdaQuery()
+                .eq(VoucherOrder::getUserId, UserHolder.getUser().getId())
+                .eq(VoucherOrder::getVoucherId, getVoucherOrderByVoucherIdDto.getVoucherId())
+                .one();
+        if (Objects.nonNull(voucherOrder)) {
+            return voucherOrder.getId();
+        }
+        return null;
+    }
+    
+    @Override
+    public Boolean cancel(CancelVoucherOrderDto cancelVoucherOrderDto) {
         return null;
     }
 

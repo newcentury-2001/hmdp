@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ArrowLeft, ArrowRight, Location, Timer } from '@element-plus/icons-vue'
 import { ElLoading } from 'element-plus'
 import { getShopById } from '@/api/shop'
-import { getVoucherList, seckillVoucher, getSeckillOrder, getVoucherOrderRouter } from '@/api/voucher'
+import { getVoucherList, seckillVoucher, getSeckillOrderId, getVoucherOrderIdByVoucherId } from '@/api/voucher'
 import { useUserStore } from '@/stores'
 
 const router = useRouter()
@@ -33,7 +33,7 @@ const refreshPurchaseStatus = async () => {
       list.map(async (v) => {
         if (!v?.id) return
         try {
-          const res = await getVoucherOrderRouter(String(v.id))
+          const res = await getVoucherOrderIdByVoucherId(String(v.id))
           purchasedMap.value[String(v.id)] = !!res?.data
         } catch (e) {
           // 忽略单项错误，保持既有状态
@@ -51,7 +51,7 @@ const pollSeckillOrder = async (orderId, { delay = 800, timeoutMs = 11000 } = {}
   const end = Date.now() + timeoutMs
   while (Date.now() < end) {
     try {
-      const { data } = await getSeckillOrder(String(orderId))
+      const { data } = await getSeckillOrderId(String(orderId))
       if (data) {
         ElMessage.success('抢购成功')
         return data
@@ -186,7 +186,7 @@ const seckill = async (v) => {
       // 成功拿到订单后，再次查询该券的已购状态并置灰按钮
       if (order) {
         try {
-          const check = await getVoucherOrderRouter(String(v.id))
+          const check = await getVoucherOrderIdByVoucherId(String(v.id))
           if (check?.data) {
             purchasedMap.value[String(v.id)] = true
           }

@@ -14,6 +14,7 @@ public enum BusinessType {
     SUCCESS(1, "创建订单成功"),
     TIMEOUT(2, "创建订单超时"),
     FAIL(3, "创建订单失败"),
+    CANCEL(4, "主动取消"),
    
     
     ;
