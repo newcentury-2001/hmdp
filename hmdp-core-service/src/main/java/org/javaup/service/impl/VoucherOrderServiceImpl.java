@@ -35,6 +35,7 @@ import org.javaup.mapper.VoucherOrderRouterMapper;
 import org.javaup.redis.RedisCacheImpl;
 import org.javaup.redis.RedisKeyBuild;
 import org.javaup.repeatexecutelimit.annotion.RepeatExecuteLimit;
+import org.javaup.service.IAutoIssueNotifyService;
 import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IUserInfoService;
 import org.javaup.service.IVoucherOrderRouterService;
@@ -124,6 +125,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     
     @Resource
     private RedisVoucherData redisVoucherData;
+
+    @Resource
+    private IAutoIssueNotifyService autoIssueNotifyService;
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
 
@@ -318,7 +322,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 traceId,
                 seckillVoucherDomain.getBeforeQty(),
                 seckillVoucherDomain.getDeductQty(),
-                seckillVoucherDomain.getAfterQty()
+                seckillVoucherDomain.getAfterQty(),
+                Boolean.FALSE
         );
         // 发送kafka
         seckillVoucherProducer.sendPayload(
@@ -463,6 +468,15 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             redisCache.delForSortedSet(subscribeZSetKey, String.valueOf(userId));
         } catch (Exception e) {
             log.warn("清理订阅ZSET成员失败，voucherId={}, userId={}, err={}", voucherOrderDto.getVoucherId(), userId, e.getMessage());
+        }
+        // 自动发券场景：发送用户通知（短信/APP）并做去重
+        if (Boolean.TRUE.equals(voucherOrderDto.getAutoIssue())) {
+            try {
+                autoIssueNotifyService.sendAutoIssueNotify(voucherOrder.getVoucherId(), userId, voucherOrder.getId());
+            } catch (Exception e) {
+                log.warn("自动发券通知发送失败，voucherId={}, userId={}, orderId={}, err={}",
+                        voucherOrder.getVoucherId(), userId, voucherOrder.getId(), e.getMessage());
+            }
         }
         return true;
     }
@@ -663,7 +677,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 traceId,
                 domain.getBeforeQty(),
                 domain.getDeductQty(),
-                domain.getAfterQty()
+                domain.getAfterQty(),
+                Boolean.TRUE
         );
         // 发送Kafka消息（失败将由生产者回调触发Redis回滚）
         seckillVoucherProducer.sendPayload(

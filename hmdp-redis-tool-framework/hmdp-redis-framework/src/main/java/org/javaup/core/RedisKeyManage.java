@@ -87,6 +87,12 @@ public enum RedisKeyManage {
     SECKILL_ROLLBACK_ALERT_DEDUP_KEY("seckill:rollback:alert:dedup:%s","秒杀券的id","value为1","k"),
     
     /**
+     * 自动发券成功通知的去重键（带HashTag，voucherId在同槽位）
+     * member 维度包含 voucherId 与 userId，避免重复提醒
+     */
+    SECKILL_AUTO_ISSUE_NOTIFY_DEDUP_KEY("seckill:autoissue:notify:dedup:{%s}:%s","秒杀券id（同槽位HashTag）与用户id","value为1","k"),
+    
+    /**
      * 订阅：用户集合（带Hash Tag，voucherId在同槽位）
      */
     SECKILL_SUBSCRIBE_USER_TAG_KEY("seckill:subscribe:user:{%s}","秒杀券id（同槽位HashTag）","value为订阅用户集合","k"),

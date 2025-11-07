@@ -26,4 +26,7 @@ public class SeckillVoucherMessage {
     
     /** 扣减后库存数量 */
     private Integer afterQty;
+
+    /** 是否为“回滚后自动发券”流程产生的消息 */
+    private Boolean autoIssue;
 }

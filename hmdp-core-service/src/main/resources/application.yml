@@ -82,6 +82,16 @@ seckill:
         dlq:
           partitions: 3
           replicationFactor: 1
+  autoissue:
+    notify:
+      sms:
+        enabled: false
+        to: ""
+      app:
+        enabled: false
+      dedup:
+        window:
+          seconds: 300
 
 management:
   endpoints:

@@ -135,6 +135,7 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
         voucherOrderDto.setUserId(messageBody.getUserId());
         voucherOrderDto.setVoucherId(messageBody.getVoucherId());
         voucherOrderDto.setMessageId(message.getUuid());
+        voucherOrderDto.setAutoIssue(messageBody.getAutoIssue());
         voucherOrderService.createVoucherOrderV2(voucherOrderDto);
     }
     
