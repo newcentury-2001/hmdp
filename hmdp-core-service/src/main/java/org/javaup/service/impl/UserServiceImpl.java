@@ -5,21 +5,24 @@ import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpSession;
+import lombok.extern.slf4j.Slf4j;
 import org.javaup.dto.LoginFormDTO;
 import org.javaup.dto.Result;
 import org.javaup.dto.UserDTO;
 import org.javaup.entity.User;
+import org.javaup.entity.UserInfo;
 import org.javaup.mapper.UserMapper;
+import org.javaup.service.IUserInfoService;
 import org.javaup.service.IUserService;
 import org.javaup.toolkit.SnowflakeIdGenerator;
 import org.javaup.utils.RegexUtils;
 import org.javaup.utils.UserHolder;
-import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpSession;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -52,6 +55,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     
     @Resource
     private SnowflakeIdGenerator snowflakeIdGenerator;
+    
+    @Resource
+    private IUserInfoService userInfoService;
 
     @Override
     public Result<String> sendCode(String phone, HttpSession session) {
@@ -73,6 +79,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Result<String> login(LoginFormDTO loginForm, HttpSession session) {
         // 1.校验手机号
         String phone = loginForm.getPhone();
@@ -186,6 +193,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomString(10));
         // 2.保存用户
         save(user);
+        // 3.保存用户信息
+        UserInfo userInfo = new UserInfo();
+        userInfo.setId(snowflakeIdGenerator.nextId());
+        userInfo.setUserId(user.getId());
+        userInfo.setLevel(1);
+        userInfoService.save(userInfo);
         return user;
     }
 }
