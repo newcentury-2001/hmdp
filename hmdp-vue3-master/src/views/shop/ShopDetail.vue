@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ArrowLeft, ArrowRight, Location, Timer } from '@element-plus/icons-vue'
 import { ElLoading } from 'element-plus'
 import { getShopById } from '@/api/shop'
-import { getVoucherList, seckillVoucher, getSeckillOrderId, getVoucherOrderIdByVoucherId, cancelVoucherOrder } from '@/api/voucher'
+import { getVoucherList, seckillVoucher, getSeckillOrderId, getVoucherOrderIdByVoucherId, cancelVoucherOrder, subscribeVoucher, unsubscribeVoucher, getSubscribeStatusBatch } from '@/api/voucher'
 import { useUserStore } from '@/stores'
 
 const router = useRouter()
@@ -18,6 +18,8 @@ const vouchers = ref([])
 const seckillInProgress = ref(false)
 // 已购状态映射：voucherId -> boolean
 const purchasedMap = ref({})
+// 订阅状态映射：voucherId -> 0|1|2 （0 未订阅/已取消；1 已订阅；2 自动发券成功）
+const subscribeStatusMap = ref({})
 
 const isPurchased = (voucherId) => {
   return !!purchasedMap.value[String(voucherId)]
@@ -44,6 +46,37 @@ const refreshPurchaseStatus = async () => {
     // 忽略总体错误
   }
 }
+
+// 批量查询订阅状态（登录用户）
+const refreshSubscribeStatusBatch = async () => {
+  try {
+    if (!userStore.token) return
+    const ids = (vouchers.value || []).map((v) => v.id).filter(Boolean)
+    if (!ids.length) return
+    const res = await getSubscribeStatusBatch(ids)
+    const arr = Array.isArray(res?.data) ? res.data : []
+    const map = {}
+    for (const item of arr) {
+      if (!item) continue
+      const vid = String(item.voucherId)
+      const st = Number(item.subscribeStatus)
+      map[vid] = Number.isFinite(st) ? st : 0
+      // 若状态为自动发券成功，则本地也标记为已购（双保险）
+      if (st === 2) {
+        purchasedMap.value[vid] = true
+      }
+    }
+    subscribeStatusMap.value = { ...subscribeStatusMap.value, ...map }
+  } catch (e) {
+    // 静默失败
+  }
+}
+
+const getSubscribeCode = (voucherId) => {
+  return Number(subscribeStatusMap.value[String(voucherId)] ?? 0)
+}
+const isSubscribed = (voucherId) => getSubscribeCode(voucherId) === 1
+const isSubscribeSuccess = (voucherId) => getSubscribeCode(voucherId) === 2
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -86,6 +119,8 @@ const queryVoucher = async (shopId) => {
     vouchers.value = data || []
     // 加载后查询每张券的已购状态
     await refreshPurchaseStatus()
+    // 批量查询订阅状态
+    await refreshSubscribeStatusBatch()
   } catch (error) {
     console.error(error)
     ElMessage.error('获取优惠券列表失败')
@@ -233,6 +268,48 @@ const cancelVoucher = async (v) => {
   }
 }
 
+// 订阅到券提醒
+const subscribeToVoucher = async (v) => {
+  if (!userStore.token) {
+    ElMessage.error('请先登录')
+    setTimeout(() => router.push('/login'), 200)
+    return
+  }
+  if (!v?.id) return
+  try {
+    const res = await subscribeVoucher(String(v.id))
+    if (res?.success) {
+      ElMessage.success('已订阅到券提醒')
+      subscribeStatusMap.value[String(v.id)] = 1
+    } else {
+      ElMessage.error(res?.errorMsg || '订阅失败')
+    }
+  } catch (e) {
+    ElMessage.error('订阅失败')
+  }
+}
+
+// 取消订阅到券提醒
+const unsubscribeFromVoucher = async (v) => {
+  if (!userStore.token) {
+    ElMessage.error('请先登录')
+    setTimeout(() => router.push('/login'), 200)
+    return
+  }
+  if (!v?.id) return
+  try {
+    const res = await unsubscribeVoucher(String(v.id))
+    if (res?.success) {
+      ElMessage.success('已取消订阅')
+      subscribeStatusMap.value[String(v.id)] = 0
+    } else {
+      ElMessage.error(res?.errorMsg || '取消订阅失败')
+    }
+  } catch (e) {
+    ElMessage.error('取消订阅失败')
+  }
+}
+
 // 返回上一页
 const goBack = () => {
   router.back()
@@ -368,6 +445,16 @@ onMounted(() => {
             <div v-if="isPurchased(v.id)" class="seckill-status">
               <span class="purchased-tag">已购</span>
               <span class="cancel-link" @click="cancelVoucher(v)">取消领取</span>
+            </div>
+            <!-- 库存为 0 且未购买时，展示订阅到券提醒 -->
+            <div v-else-if="Number(v.stock) < 1 && !isPurchased(v.id)" class="subscribe-box">
+              <div v-if="isSubscribed(v.id)" class="subscribe-status">
+                <span class="subscribed-tag">已订阅到券提醒</span>
+                <span class="cancel-subscribe" @click="unsubscribeFromVoucher(v)">取消订阅</span>
+              </div>
+              <div v-else class="subscribe-status">
+                <span class="subscribe-link" @click="subscribeToVoucher(v)">到券提醒</span>
+              </div>
             </div>
           </div>
           <div class="voucher-btn" v-else>抢购</div>
@@ -740,6 +827,73 @@ onMounted(() => {
 .cancel-link:hover {
   background-color: #337ecc;
   border-color: #337ecc;
+}
+
+/* 订阅到券提醒样式 */
+.subscribe-box {
+  margin-top: 6px;
+}
+.subscribe-status {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  font-size: 14px;
+  color: #666;
+}
+.subscribed-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  line-height: 20px;
+  border-radius: 10px;
+  background-color: #e6f4ff;
+  color: #1677ff;
+  font-weight: 600;
+}
+.subscribe-link {
+  display: inline-block;
+  padding: 4px 12px;
+  line-height: 20px;
+  border-radius: 12px;
+  border: 1px solid #ffa940;
+  background-color: #ffa940;
+  color: #fff;
+  cursor: pointer;
+}
+.subscribe-link:hover {
+  background-color: #fa8c16;
+  border-color: #fa8c16;
+}
+.cancel-subscribe {
+  display: inline-block;
+  padding: 4px 12px;
+  line-height: 20px;
+  border-radius: 12px;
+  border: 1px solid #d9d9d9;
+  background-color: #fff;
+  color: #606266;
+  cursor: pointer;
+}
+.cancel-subscribe:hover {
+  background-color: #f5f5f5;
+}
+.subscribe-tip {
+  color: #8a8a8a;
+  font-size: 12px;
+}
+
+/* 统一订阅相关按钮尺寸与样式，让两个按钮等宽等高 */
+.subscribe-link,
+.cancel-subscribe,
+.subscribed-tag {
+  display: inline-block;
+  width: 180px;
+  height: 36px;
+  line-height: 36px;
+  border-radius: 18px;
+  padding: 0 14px;
+  text-align: center;
+  font-weight: 600;
 }
 
 .shop-comments {
