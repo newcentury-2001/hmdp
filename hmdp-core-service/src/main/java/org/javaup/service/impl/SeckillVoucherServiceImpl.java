@@ -13,6 +13,7 @@ import org.javaup.redis.RedisCache;
 import org.javaup.redis.RedisKeyBuild;
 import org.javaup.service.ISeckillVoucherService;
 import org.javaup.servicelock.LockType;
+import org.javaup.servicelock.annotion.ServiceLock;
 import org.javaup.util.ServiceLockTool;
 import org.redisson.api.RLock;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import static org.javaup.constant.Constant.BLOOM_FILTER_HANDLER_VOUCHER;
+import static org.javaup.constant.DistributedLockConstants.UPDATE_SECKILL_VOUCHER_LOCK;
 import static org.javaup.utils.RedisConstants.CACHE_NULL_TTL;
 import static org.javaup.utils.RedisConstants.LOCK_SECKILL_VOUCHER_KEY;
 
@@ -48,8 +50,9 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
     
     @Resource
     private SeckillVoucherMapper seckillVoucherMapper;
-
     
+    
+    @ServiceLock(lockType= LockType.Read,name = UPDATE_SECKILL_VOUCHER_LOCK,keys = {"#voucherId"})
     @Override
     public SeckillVoucher queryByVoucherId(Long voucherId) {
         // 先查本地缓存，命中则直接返回

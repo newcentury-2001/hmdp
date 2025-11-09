@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import org.javaup.dto.Result;
 import org.javaup.dto.SeckillVoucherDto;
 import org.javaup.dto.UpdateSeckillVoucherDto;
+import org.javaup.dto.UpdateSeckillVoucherStockDto;
 import org.javaup.dto.VoucherDto;
 import org.javaup.dto.VoucherSubscribeBatchDto;
 import org.javaup.dto.VoucherSubscribeDto;
@@ -53,6 +54,17 @@ public class VoucherController {
     @PostMapping("update/seckill")
     public Result<Void> updateSeckillVoucher(@Valid @RequestBody UpdateSeckillVoucherDto updateSeckillVoucherDto) {
         voucherService.updateSeckillVoucher(updateSeckillVoucherDto);
+        return Result.ok();
+    }
+    
+    /**
+     * 更新秒杀券的库存
+     * @param updateSeckillVoucherDto 修改的秒杀优惠券信息
+     * @return 优惠券id
+     */
+    @PostMapping("update/seckill/stock")
+    public Result<Void> updateSeckillVoucherStock(@Valid @RequestBody UpdateSeckillVoucherStockDto updateSeckillVoucherDto) {
+        voucherService.updateSeckillVoucherStock(updateSeckillVoucherDto);
         return Result.ok();
     }
 

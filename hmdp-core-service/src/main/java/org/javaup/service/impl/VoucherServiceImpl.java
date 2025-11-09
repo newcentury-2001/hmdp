@@ -2,6 +2,7 @@ package org.javaup.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.date.LocalDateTimeUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import org.javaup.cache.SeckillVoucherCacheInvalidationPublisher;
@@ -9,21 +10,27 @@ import org.javaup.core.RedisKeyManage;
 import org.javaup.dto.Result;
 import org.javaup.dto.SeckillVoucherDto;
 import org.javaup.dto.UpdateSeckillVoucherDto;
+import org.javaup.dto.UpdateSeckillVoucherStockDto;
 import org.javaup.dto.VoucherDto;
 import org.javaup.dto.VoucherSubscribeBatchDto;
 import org.javaup.dto.VoucherSubscribeDto;
 import org.javaup.entity.SeckillVoucher;
 import org.javaup.entity.Voucher;
+import org.javaup.enums.BaseCode;
+import org.javaup.enums.StockUpdateType;
 import org.javaup.enums.SubscribeStatus;
+import org.javaup.exception.HmdpFrameException;
 import org.javaup.handler.BloomFilterHandlerFactory;
 import org.javaup.mapper.VoucherMapper;
 import org.javaup.redis.RedisCache;
 import org.javaup.redis.RedisKeyBuild;
 import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IVoucherService;
+import org.javaup.servicelock.LockType;
+import org.javaup.servicelock.annotion.ServiceLock;
 import org.javaup.toolkit.SnowflakeIdGenerator;
-import org.javaup.vo.GetSubscribeStatusVo;
 import org.javaup.utils.UserHolder;
+import org.javaup.vo.GetSubscribeStatusVo;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +41,7 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import static org.javaup.constant.Constant.BLOOM_FILTER_HANDLER_VOUCHER;
+import static org.javaup.constant.DistributedLockConstants.UPDATE_SECKILL_VOUCHER_LOCK;
 import static org.javaup.utils.RedisConstants.SECKILL_STOCK_KEY;
 
 /**
@@ -90,6 +98,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     }
     
     @Override
+    @ServiceLock(lockType= LockType.Write,name = UPDATE_SECKILL_VOUCHER_LOCK,keys = {"#updateSeckillVoucherDto.voucherId"})
     @Transactional(rollbackFor = Exception.class)
     public void updateSeckillVoucher(UpdateSeckillVoucherDto updateSeckillVoucherDto) {
         Long voucherId = updateSeckillVoucherDto.getVoucherId();
@@ -139,14 +148,6 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
             seckillUpdate.set(SeckillVoucher::getEndTime, updateSeckillVoucherDto.getEndTime());
             updatedSeckill = true;
         }
-        if (updateSeckillVoucherDto.getInitStock() != null) {
-            seckillUpdate.set(SeckillVoucher::getInitStock, updateSeckillVoucherDto.getInitStock());
-            updatedSeckill = true;
-        }
-        if (updateSeckillVoucherDto.getStock() != null) {
-            seckillUpdate.set(SeckillVoucher::getStock, updateSeckillVoucherDto.getStock());
-            updatedSeckill = true;
-        }
         // 受众规则字段更新
         if (updateSeckillVoucherDto.getAllowedLevels() != null) {
             seckillUpdate.set(SeckillVoucher::getAllowedLevels, updateSeckillVoucherDto.getAllowedLevels());
@@ -163,6 +164,51 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         // 更新后清理缓存，等待读路径按新数据重建缓存
         if (updatedVoucher || updatedSeckill) {
             seckillVoucherCacheInvalidationPublisher.publishInvalidate(voucherId, "update");
+        }
+    }
+    
+    @Override
+    @ServiceLock(lockType= LockType.Write,name = UPDATE_SECKILL_VOUCHER_LOCK,keys = {"#updateSeckillVoucherDto.voucherId"})
+    @Transactional(rollbackFor = Exception.class)
+    public void updateSeckillVoucherStock(UpdateSeckillVoucherStockDto updateSeckillVoucherDto) {
+        SeckillVoucher seckillVoucher = seckillVoucherService.lambdaQuery()
+                .eq(SeckillVoucher::getVoucherId, updateSeckillVoucherDto.getVoucherId()).one();
+        if (Objects.isNull(seckillVoucher)) {
+            throw new HmdpFrameException(BaseCode.SECKILL_VOUCHER_NOT_EXIST);
+        }
+        Integer oldStock = seckillVoucher.getStock();
+        Integer oldInitStock = seckillVoucher.getInitStock();
+        Integer newInitStock = updateSeckillVoucherDto.getInitStock();
+        int changeStock = newInitStock - oldInitStock;
+        if (changeStock == 0) {
+            return;
+        }
+        int newStock = oldStock + changeStock;
+        if (newStock < 0 ) {
+            throw new HmdpFrameException(BaseCode.AFTER_SECKILL_VOUCHER_REMAIN_STOCK_NOT_NEGATIVE_NUMBER);
+        }
+        Integer stockUpdateType = StockUpdateType.INCREASE.getCode();
+        if (changeStock < 0) {
+            stockUpdateType = StockUpdateType.DECREASE.getCode();
+        }
+        seckillVoucherService.lambdaUpdate()
+                .set(SeckillVoucher::getStock, newStock)
+                .set(SeckillVoucher::getInitStock, newInitStock)
+                .set(SeckillVoucher::getUpdateTime, LocalDateTimeUtil.now())
+                .update();
+        String oldRedisStockStr = redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, 
+                updateSeckillVoucherDto.getVoucherId()), String.class);
+        if (StrUtil.isBlank(oldRedisStockStr)) {
+            redisCache.set(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY,
+                    updateSeckillVoucherDto.getVoucherId()),String.valueOf(newInitStock));
+        }else {
+            int oldRedisStock = Integer.parseInt(oldRedisStockStr);
+            int newRedisStock = oldRedisStock + changeStock;
+            if (newRedisStock < 0 ) {
+                throw new HmdpFrameException(BaseCode.AFTER_SECKILL_VOUCHER_REMAIN_STOCK_NOT_NEGATIVE_NUMBER);
+            }
+            redisCache.set(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY,
+                    updateSeckillVoucherDto.getVoucherId()),String.valueOf(newRedisStock));
         }
     }
     

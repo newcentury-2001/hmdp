@@ -29,6 +29,8 @@ public enum BaseCode {
     
     SECKILL_VOUCHER_ORDER_NOT_EXIST(10009, "优惠券订单不存在"),
     
+    AFTER_SECKILL_VOUCHER_REMAIN_STOCK_NOT_NEGATIVE_NUMBER(10010,"修改后的剩余库存不能为负数"),
+    
     USER_NOT_EXIST(20000, "用户不存在"),
     
     USER_ALREADY_PURCHASE(20001, "用户已经购买"),

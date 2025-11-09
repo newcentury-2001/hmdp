@@ -65,16 +65,6 @@ public class UpdateSeckillVoucherDto implements Serializable {
     private Integer status;
     
     /**
-     * 初始化的库存
-     */
-    private Integer initStock;
-    
-    /**
-     * 库存
-     */
-    private Integer stock;
-    
-    /**
      * 生效时间
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
