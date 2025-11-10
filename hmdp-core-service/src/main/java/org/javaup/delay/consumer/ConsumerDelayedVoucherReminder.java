@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -41,13 +42,16 @@ import static org.javaup.constant.Constant.DELAY_VOUCHER_REMINDER;
 @Slf4j
 @Component
 public class ConsumerDelayedVoucherReminder implements ConsumerTask {
+    
     @Resource
     private RedisCache redisCache;
+    
     @Resource
     private ISeckillVoucherService seckillVoucherService;
+    
     @Resource
     private IUserInfoService userInfoService;
-    // 不再依赖跨库Mapper统计Top买家，改为Redis读取聚合
+
 
     @Value("${seckill.reminder.notify.sms.enabled:false}")
     private boolean smsEnabled;
@@ -352,7 +356,7 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
         }
     }
 
-    private int notifyUsers(Long voucherId, java.time.LocalDateTime beginTime, Set<String> userIds) {
+    private int notifyUsers(Long voucherId, LocalDateTime beginTime, Set<String> userIds) {
         int notifyCount = 0;
         for (String userIdStr : userIds) {
             if (StrUtil.isBlank(userIdStr)) { continue; }

@@ -1,6 +1,7 @@
 package org.javaup.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import org.javaup.dto.DelayVoucherReminderDto;
 import org.javaup.dto.Result;
 import org.javaup.dto.SeckillVoucherDto;
 import org.javaup.dto.UpdateSeckillVoucherDto;
@@ -37,4 +38,6 @@ public interface IVoucherService extends IService<Voucher> {
     Integer getSubscribeStatus(VoucherSubscribeDto voucherSubscribeDto);
     
     List<GetSubscribeStatusVo> getSubscribeStatusBatch(VoucherSubscribeBatchDto voucherSubscribeBatchDto);
+    
+    void delayVoucherReminder(DelayVoucherReminderDto delayVoucherReminderDto);
 }

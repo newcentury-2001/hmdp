@@ -13,6 +13,7 @@ import org.javaup.message.MessageExtend;
 import org.javaup.model.SeckillVoucherFullModel;
 import org.javaup.redis.RedisCache;
 import org.javaup.redis.RedisKeyBuild;
+import org.javaup.service.IAutoIssueNotifyService;
 import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IVoucherOrderService;
 import org.javaup.service.IVoucherReconcileLogService;
@@ -28,7 +29,11 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.javaup.constant.Constant.SECKILL_VOUCHER_TOPIC;
 import static org.javaup.constant.Constant.SPRING_INJECT_PREFIX_DISTINCTION_NAME;
@@ -89,6 +94,47 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
      * */
     @Resource
     private SnowflakeIdGenerator snowflakeIdGenerator;
+    
+    
+    @Resource
+    private IAutoIssueNotifyService autoIssueNotifyService;
+    
+    
+    private static final int CPU_CORES = Runtime.getRuntime().availableProcessors();
+    private static final int EXECUTOR_THREADS = Math.max(2, CPU_CORES);
+    private static final int EXECUTOR_QUEUE_CAPACITY = 1024 * Math.max(1, CPU_CORES);
+    
+    private static final ThreadPoolExecutor SECKILL_ORDER_CONSUME_TASK_EXECUTOR =
+            new ThreadPoolExecutor(
+                    EXECUTOR_THREADS,
+                    EXECUTOR_THREADS,
+                    0L,
+                    TimeUnit.MILLISECONDS,
+                    new LinkedBlockingQueue<>(EXECUTOR_QUEUE_CAPACITY),
+                    new NamedThreadFactory("seckill-order-consume-task", false),
+                    new ThreadPoolExecutor.CallerRunsPolicy()
+            );
+    
+    private static class NamedThreadFactory implements ThreadFactory {
+        private final String namePrefix;
+        private final boolean daemon;
+        private final AtomicInteger index = new AtomicInteger(1);
+        
+        public NamedThreadFactory(String namePrefix, boolean daemon) {
+            this.namePrefix = namePrefix;
+            this.daemon = daemon;
+        }
+        
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, namePrefix + index.getAndIncrement());
+            t.setDaemon(daemon);
+            t.setUncaughtExceptionHandler((thread, ex) ->
+                    log.error("未捕获异常，线程={}, err={}", thread.getName(), ex.getMessage(), ex)
+            );
+            return t;
+        }
+    }
     
     
     public SeckillVoucherConsumer() {
@@ -162,32 +208,56 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
     @Override
     protected void afterConsumeSuccess(MessageExtend<SeckillVoucherMessage> message) {
         super.afterConsumeSuccess(message);
-        // 统计“店铺每日Top买家”：将用户加入对应店铺当日ZSET并自增分数
-        try {
-            Long voucherId = message.getMessageBody().getVoucherId();
-            Long userId = message.getMessageBody().getUserId();
-            SeckillVoucherFullModel voucherFull = seckillVoucherService.queryByVoucherId(voucherId);
-            if (Objects.isNull(voucherFull)) {
-                return;
+        SeckillVoucherMessage messageBody = message.getMessageBody();
+        Long userId = messageBody.getUserId();
+        Long voucherId = messageBody.getVoucherId();
+        Long orderId = messageBody.getOrderId();
+        // 使用线程池异步执行后续清理与通知逻辑
+        SECKILL_ORDER_CONSUME_TASK_EXECUTOR.execute(() -> {
+            // 订单创建成功后，清理该用户在订阅ZSET中的排队位置（避免后续重复分配）
+            try {
+                RedisKeyBuild subscribeZSetKey = RedisKeyBuild.createRedisKey(
+                        RedisKeyManage.SECKILL_SUBSCRIBE_ZSET_TAG_KEY,
+                        messageBody.getVoucherId()
+                );
+                redisCache.delForSortedSet(subscribeZSetKey, String.valueOf(userId));
+            } catch (Exception e) {
+                log.warn("清理订阅ZSET成员失败，voucherId={}, userId={}, err={}", messageBody.getVoucherId(), userId, e.getMessage());
             }
-            Long shopId = voucherFull.getShopId();
-            // yyyyMMdd
-            String day = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE); 
-            RedisKeyBuild dailyKey = RedisKeyBuild.createRedisKey(
-                    RedisKeyManage.SECKILL_SHOP_TOP_BUYERS_DAILY_TAG_KEY,
-                    shopId,
-                    day
-            );
-            // 自增当日购买次数
-            redisCache.incrementScoreForSortedSet(dailyKey, String.valueOf(userId), 1.0);
-            // 若首次写入或无TTL，则设置保留时长（默认保留90天）
-            Long ttl = redisCache.getExpire(dailyKey, TimeUnit.SECONDS);
-            if (ttl == null || ttl < 0) {
-                redisCache.expire(dailyKey, 90, TimeUnit.DAYS);
+            // 自动发券场景：发送用户通知（短信/APP）并做去重
+            if (Boolean.TRUE.equals(messageBody.getAutoIssue())) {
+                try {
+                    autoIssueNotifyService.sendAutoIssueNotify(voucherId, userId, orderId);
+                } catch (Exception e) {
+                    log.warn("自动发券通知发送失败，voucherId={}, userId={}, orderId={}, err={}",
+                            voucherId, userId, orderId, e.getMessage());
+                }
             }
-        } catch (Exception e) {
-            log.warn("统计店铺Top买家失败，忽略不影响主流程", e);
-        }
+            try {
+                // 统计“店铺每日Top买家”：将用户加入对应店铺当日ZSET并自增分数
+                SeckillVoucherFullModel voucherFull = seckillVoucherService.queryByVoucherId(voucherId);
+                if (Objects.isNull(voucherFull)) {
+                    return;
+                }
+                Long shopId = voucherFull.getShopId();
+                // yyyyMMdd
+                String day = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+                RedisKeyBuild dailyKey = RedisKeyBuild.createRedisKey(
+                        RedisKeyManage.SECKILL_SHOP_TOP_BUYERS_DAILY_TAG_KEY,
+                        shopId,
+                        day
+                );
+                // 自增当日购买次数
+                redisCache.incrementScoreForSortedSet(dailyKey, String.valueOf(userId), 1.0);
+                // 若首次写入或无TTL，则设置保留时长（默认保留90天）
+                Long ttl = redisCache.getExpire(dailyKey, TimeUnit.SECONDS);
+                if (ttl == null || ttl < 0) {
+                    redisCache.expire(dailyKey, 90, TimeUnit.DAYS);
+                }
+            } catch (Exception e) {
+                log.warn("统计店铺Top买家失败，忽略不影响主流程", e);
+            }
+        });
     }
     
     /**

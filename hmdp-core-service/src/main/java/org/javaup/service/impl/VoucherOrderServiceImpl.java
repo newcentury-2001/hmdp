@@ -18,6 +18,7 @@ import org.javaup.dto.GetVoucherOrderByVoucherIdDto;
 import org.javaup.dto.GetVoucherOrderDto;
 import org.javaup.dto.Result;
 import org.javaup.entity.UserInfo;
+import org.javaup.entity.Voucher;
 import org.javaup.entity.VoucherOrder;
 import org.javaup.entity.VoucherOrderRouter;
 import org.javaup.enums.BaseCode;
@@ -37,12 +38,12 @@ import org.javaup.model.SeckillVoucherFullModel;
 import org.javaup.redis.RedisCacheImpl;
 import org.javaup.redis.RedisKeyBuild;
 import org.javaup.repeatexecutelimit.annotion.RepeatExecuteLimit;
-import org.javaup.service.IAutoIssueNotifyService;
 import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IUserInfoService;
 import org.javaup.service.IVoucherOrderRouterService;
 import org.javaup.service.IVoucherOrderService;
 import org.javaup.service.IVoucherReconcileLogService;
+import org.javaup.service.IVoucherService;
 import org.javaup.toolkit.SnowflakeIdGenerator;
 import org.javaup.utils.RedisIdWorker;
 import org.javaup.utils.UserHolder;
@@ -63,6 +64,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -88,6 +90,9 @@ import static org.javaup.constant.RepeatExecuteLimitConstants.SECKILL_VOUCHER_OR
 @Service
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
 
+    @Resource
+    private IVoucherService voucherService;
+    
     @Resource
     private ISeckillVoucherService seckillVoucherService;
 
@@ -126,9 +131,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     
     @Resource
     private RedisVoucherData redisVoucherData;
-
-    @Resource
-    private IAutoIssueNotifyService autoIssueNotifyService;
     
     @Resource
     private IVoucherReconcileLogService voucherReconcileLogService;
@@ -142,17 +144,13 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         SECKILL_SCRIPT.setResultType(Long.class);
     }
 
-    private static final int CPU_CORES = Runtime.getRuntime().availableProcessors();
-    private static final int EXECUTOR_THREADS = Math.max(2, CPU_CORES);
-    private static final int EXECUTOR_QUEUE_CAPACITY = 1024 * Math.max(1, CPU_CORES);
-
     private static final ThreadPoolExecutor SECKILL_ORDER_EXECUTOR =
             new ThreadPoolExecutor(
-                    EXECUTOR_THREADS,
-                    EXECUTOR_THREADS,
+                    1,
+                    1,
                     0L,
                     TimeUnit.MILLISECONDS,
-                    new LinkedBlockingQueue<>(EXECUTOR_QUEUE_CAPACITY),
+                    new LinkedBlockingQueue<>(1024),
                     new NamedThreadFactory("seckill-order-", false),
                     new ThreadPoolExecutor.CallerRunsPolicy()
             );
@@ -519,28 +517,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 "order created",
                 message
         );
-        // 使用线程池异步执行后续清理与通知逻辑
-        SECKILL_ORDER_EXECUTOR.execute(() -> {
-            // 订单创建成功后，清理该用户在订阅ZSET中的排队位置（避免后续重复分配）
-            try {
-                RedisKeyBuild subscribeZSetKey = RedisKeyBuild.createRedisKey(
-                        RedisKeyManage.SECKILL_SUBSCRIBE_ZSET_TAG_KEY,
-                        messageBody.getVoucherId()
-                );
-                redisCache.delForSortedSet(subscribeZSetKey, String.valueOf(userId));
-            } catch (Exception e) {
-                log.warn("清理订阅ZSET成员失败，voucherId={}, userId={}, err={}", messageBody.getVoucherId(), userId, e.getMessage());
-            }
-            // 自动发券场景：发送用户通知（短信/APP）并做去重
-            if (Boolean.TRUE.equals(messageBody.getAutoIssue())) {
-                try {
-                    autoIssueNotifyService.sendAutoIssueNotify(voucherOrder.getVoucherId(), userId, voucherOrder.getId());
-                } catch (Exception e) {
-                    log.warn("自动发券通知发送失败，voucherId={}, userId={}, orderId={}, err={}",
-                            voucherOrder.getVoucherId(), userId, voucherOrder.getId(), e.getMessage());
-                }
-            }
-        });
         return true;
     }
     
@@ -604,6 +580,17 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             redisCache.delForHash(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_SUBSCRIBE_STATUS_TAG_KEY, 
                     cancelVoucherOrderDto.getVoucherId()),
                     String.valueOf(voucherOrder.getUserId()));
+            // 将自己移出每日Top买家统计的hash集合
+            Voucher voucher = voucherService.getById(voucherOrder.getVoucherId());
+            if (Objects.nonNull(voucher)) {
+                String day = voucherOrder.getCreateTime().format(DateTimeFormatter.BASIC_ISO_DATE);
+                RedisKeyBuild dailyKey = RedisKeyBuild.createRedisKey(
+                        RedisKeyManage.SECKILL_SHOP_TOP_BUYERS_DAILY_TAG_KEY,
+                        voucher.getShopId(),
+                        day
+                );
+                redisCache.delForHash(dailyKey, String.valueOf(voucherOrder.getUserId()));
+            }
             
             // 回滚成功后，尝试将资格自动分配给订阅队列中最早的未购用户
             try {

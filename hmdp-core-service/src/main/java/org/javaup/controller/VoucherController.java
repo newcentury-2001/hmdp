@@ -3,6 +3,7 @@ package org.javaup.controller;
 
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
+import org.javaup.dto.DelayVoucherReminderDto;
 import org.javaup.dto.Result;
 import org.javaup.dto.SeckillVoucherDto;
 import org.javaup.dto.UpdateSeckillVoucherDto;
@@ -90,25 +91,51 @@ public class VoucherController {
        return voucherService.queryVoucherOfShop(shopId);
     }
     
+    /**
+     * 订阅
+     * @param voucherSubscribeDto 参数
+     */
     @PostMapping("/subscribe")
     public Result<Void> subscribe(@Valid @RequestBody VoucherSubscribeDto voucherSubscribeDto){
         voucherService.subscribe(voucherSubscribeDto);
         return Result.ok();
     }
     
+    /**
+     * 取消订阅
+     * @param voucherSubscribeDto 参数
+     */
     @PostMapping("/unsubscribe")
     public Result<Void> unsubscribe(@Valid @RequestBody VoucherSubscribeDto voucherSubscribeDto){
         voucherService.unsubscribe(voucherSubscribeDto);
         return Result.ok();
     }
     
+    /**
+     * 查询订阅状态
+     * @param voucherSubscribeDto 参数
+     */
     @PostMapping("/get/subscribe/status")
     public Result<Integer> getSubscribeStatus(@Valid @RequestBody VoucherSubscribeDto voucherSubscribeDto){
         return Result.ok(voucherService.getSubscribeStatus(voucherSubscribeDto));
     }
     
+    /**
+     * 批量查询订阅状态
+     * @param voucherSubscribeBatchDto 参数
+     */
     @PostMapping("/get/subscribe/status/batch")
     public Result<List<GetSubscribeStatusVo>> getSubscribeStatusBatch(@Valid @RequestBody VoucherSubscribeBatchDto voucherSubscribeBatchDto){
         return Result.ok(voucherService.getSubscribeStatusBatch(voucherSubscribeBatchDto));
+    }
+    
+    /**
+     * 延迟优惠券提醒（测试使用）
+     * @param delayVoucherReminderDto 参数
+     */
+    @PostMapping("/delay/voucher/reminder")
+    public Result<Void> delayVoucherReminder(@Valid @RequestBody DelayVoucherReminderDto delayVoucherReminderDto){
+        voucherService.delayVoucherReminder(delayVoucherReminderDto);
+        return Result.ok();
     }
 }

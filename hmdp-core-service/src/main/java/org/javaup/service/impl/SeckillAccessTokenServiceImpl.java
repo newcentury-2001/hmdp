@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class SeckillAccessTokenServiceImpl implements ISeckillAccessTokenService {
 
-    @Value("${seckill.access.token.enabled:false}")
+    @Value("${seckill.access.token.enabled:true}")
     private boolean enabled;
 
     @Value("${seckill.access.token.ttl-seconds:30}")

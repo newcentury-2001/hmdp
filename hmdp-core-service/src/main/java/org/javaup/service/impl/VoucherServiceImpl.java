@@ -12,6 +12,7 @@ import org.javaup.context.DelayQueueContext;
 import org.javaup.core.RedisKeyManage;
 import org.javaup.core.SpringUtil;
 import org.javaup.delay.message.DelayedVoucherReminderMessage;
+import org.javaup.dto.DelayVoucherReminderDto;
 import org.javaup.dto.Result;
 import org.javaup.dto.SeckillVoucherDto;
 import org.javaup.dto.UpdateSeckillVoucherDto;
@@ -510,5 +511,24 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         String topic = SpringUtil.getPrefixDistinctionName() + "-" + DELAY_VOUCHER_REMINDER;
         delayQueueContext.sendMessage(topic, content, delaySeconds, TimeUnit.SECONDS);
         log.info("[DELAY_REMINDER] 已调度提醒消息 voucherId={} delaySeconds={} topic={}", seckillVoucher.getVoucherId(), delaySeconds, topic);
+    }
+    
+    @Override
+    public void delayVoucherReminder(DelayVoucherReminderDto delayVoucherReminderDto) {
+        SeckillVoucher seckillVoucher = seckillVoucherService.lambdaQuery().eq(SeckillVoucher::getVoucherId, 
+                delayVoucherReminderDto.getVoucherId()).one();
+        if (Objects.isNull(seckillVoucher)) {
+            throw new HmdpFrameException(BaseCode.SECKILL_VOUCHER_NOT_EXIST);
+        }
+        // 构建提醒消息内容（JSON字符串）
+        DelayedVoucherReminderMessage msg = new DelayedVoucherReminderMessage(
+                seckillVoucher.getVoucherId(),
+                seckillVoucher.getBeginTime()
+        );
+        String content = JSON.toJSONString(msg);
+        String topic = SpringUtil.getPrefixDistinctionName() + "-" + DELAY_VOUCHER_REMINDER;
+        Integer delaySeconds = delayVoucherReminderDto.getDelaySeconds();
+        delayQueueContext.sendMessage(topic, content, delayVoucherReminderDto.getDelaySeconds(), TimeUnit.SECONDS);
+        log.info("[测试延迟发送] 已调度提醒消息 voucherId={} delaySeconds={} topic={}", seckillVoucher.getVoucherId(), delaySeconds, topic);
     }
 }
