@@ -128,6 +128,18 @@ public enum RedisKeyManage {
      */
     SECKILL_SUBSCRIBE_STATUS_TAG_KEY("seckill:subscribe:status:{%s}","秒杀券id（同槽位HashTag）","value为用户订阅状态HASH，field为用户id，value为状态码","k"),
     
+    /**
+     * 店铺维度：每日Top买家统计（ZSET，带Hash Tag，shopId同槽位）
+     * member 为用户id，score 为当日购买次数
+     */
+    SECKILL_SHOP_TOP_BUYERS_DAILY_TAG_KEY("seckill:shop:topbuyers:daily:{%s}:%s","商铺id（同槽位HashTag）与日期(yyyyMMdd)","ZSET，member为用户id，score为购买次数","k"),
+
+    /**
+     * 店铺维度：Top买家聚合临时键（ZSET，带Hash Tag，shopId同槽位）
+     * 将多日的每日ZSET并集聚合到该临时键
+     */
+    SECKILL_SHOP_TOP_BUYERS_UNION_TAG_KEY("seckill:shop:topbuyers:union:{%s}:%s","商铺id（同槽位HashTag）与聚合范围","临时ZSET，member为用户id，score为购买次数合并","k"),
+    
     ;
 
     /**

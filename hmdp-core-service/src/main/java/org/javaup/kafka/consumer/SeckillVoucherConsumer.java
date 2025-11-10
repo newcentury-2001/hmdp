@@ -3,12 +3,17 @@ package org.javaup.kafka.consumer;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.javaup.consumer.AbstractConsumerHandler;
+import org.javaup.core.RedisKeyManage;
 import org.javaup.enums.BusinessType;
 import org.javaup.enums.LogType;
 import org.javaup.enums.SeckillVoucherOrderOperate;
 import org.javaup.kafka.message.SeckillVoucherMessage;
 import org.javaup.kafka.redis.RedisVoucherData;
 import org.javaup.message.MessageExtend;
+import org.javaup.model.SeckillVoucherFullModel;
+import org.javaup.redis.RedisCache;
+import org.javaup.redis.RedisKeyBuild;
+import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IVoucherOrderService;
 import org.javaup.service.IVoucherReconcileLogService;
 import org.javaup.toolkit.SnowflakeIdGenerator;
@@ -19,7 +24,11 @@ import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Headers;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 import static org.javaup.constant.Constant.SECKILL_VOUCHER_TOPIC;
 import static org.javaup.constant.Constant.SPRING_INJECT_PREFIX_DISTINCTION_NAME;
@@ -56,6 +65,18 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
      * */
     @Resource
     private RedisVoucherData redisVoucherData;
+
+    /**
+     * Redis缓存：用于统计店铺每日Top买家
+     */
+    @Resource
+    private RedisCache redisCache;
+
+    /**
+     * 秒杀券服务：查询券详情以获取shopId
+     */
+    @Resource
+    private ISeckillVoucherService seckillVoucherService;
     
     /**
      * 对账日志服务：记录消费成功/失败等业务一致性日志
@@ -141,7 +162,32 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
     @Override
     protected void afterConsumeSuccess(MessageExtend<SeckillVoucherMessage> message) {
         super.afterConsumeSuccess(message);
-        //在这里统计用户购买
+        // 统计“店铺每日Top买家”：将用户加入对应店铺当日ZSET并自增分数
+        try {
+            Long voucherId = message.getMessageBody().getVoucherId();
+            Long userId = message.getMessageBody().getUserId();
+            SeckillVoucherFullModel voucherFull = seckillVoucherService.queryByVoucherId(voucherId);
+            if (Objects.isNull(voucherFull)) {
+                return;
+            }
+            Long shopId = voucherFull.getShopId();
+            // yyyyMMdd
+            String day = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE); 
+            RedisKeyBuild dailyKey = RedisKeyBuild.createRedisKey(
+                    RedisKeyManage.SECKILL_SHOP_TOP_BUYERS_DAILY_TAG_KEY,
+                    shopId,
+                    day
+            );
+            // 自增当日购买次数
+            redisCache.incrementScoreForSortedSet(dailyKey, String.valueOf(userId), 1.0);
+            // 若首次写入或无TTL，则设置保留时长（默认保留90天）
+            Long ttl = redisCache.getExpire(dailyKey, TimeUnit.SECONDS);
+            if (ttl == null || ttl < 0) {
+                redisCache.expire(dailyKey, 90, TimeUnit.DAYS);
+            }
+        } catch (Exception e) {
+            log.warn("统计店铺Top买家失败，忽略不影响主流程", e);
+        }
     }
     
     /**

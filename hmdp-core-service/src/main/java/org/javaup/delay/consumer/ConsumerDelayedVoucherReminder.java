@@ -10,7 +10,6 @@ import org.javaup.core.RedisKeyManage;
 import org.javaup.core.SpringUtil;
 import org.javaup.delay.message.DelayedVoucherReminderMessage;
 import org.javaup.entity.UserInfo;
-import org.javaup.mapper.VoucherOrderRouterMapper;
 import org.javaup.model.SeckillVoucherFullModel;
 import org.javaup.redis.RedisCache;
 import org.javaup.redis.RedisKeyBuild;
@@ -19,11 +18,17 @@ import org.javaup.service.IUserInfoService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static org.javaup.constant.Constant.DELAY_VOUCHER_REMINDER;
 
@@ -42,8 +47,7 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
     private ISeckillVoucherService seckillVoucherService;
     @Resource
     private IUserInfoService userInfoService;
-    @Resource
-    private VoucherOrderRouterMapper voucherOrderRouterMapper;
+    // 不再依赖跨库Mapper统计Top买家，改为Redis读取聚合
 
     @Value("${seckill.reminder.notify.sms.enabled:false}")
     private boolean smsEnabled;
@@ -70,7 +74,7 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
     /**
      * 是否附加通知“最近购买活跃用户”
      * */
-    @Value("${seckill.reminder.notify.top.buyers.enabled:false}")
+    @Value("${seckill.reminder.notify.top.buyers.enabled:true}")
     private boolean topBuyersEnabled;
     /**
      * 统计最近多少天的购买行为
@@ -173,14 +177,64 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
         }
         if (topBuyersEnabled) {
             try {
-                List<Long> topBuyerIds = voucherOrderRouterMapper.findTopBuyerUserIdsByShop(shopId, topBuyersCount, topBuyersDays);
+                // 收集最近N天的每日ZSET键
+                LocalDate today = LocalDate.now();
+                // yyyyMMdd
+                DateTimeFormatter fmt = DateTimeFormatter.BASIC_ISO_DATE;
+                List<RedisKeyBuild> dailyKeys = new ArrayList<>();
+                for (int i = 0; i < Math.max(topBuyersDays, 1); i++) {
+                    String day = today.minusDays(i).format(fmt);
+                    dailyKeys.add(RedisKeyBuild.createRedisKey(
+                            RedisKeyManage.SECKILL_SHOP_TOP_BUYERS_DAILY_TAG_KEY,
+                            shopId,
+                            day
+                    ));
+                }
+                List<Long> topBuyerIds;
+                if (dailyKeys.isEmpty()) {
+                    topBuyerIds = Collections.emptyList();
+                } else if (dailyKeys.size() == 1) {
+                    // 单日直接读取TopN
+                    Set<Long> topSet = redisCache.getReverseRangeForSortedSet(
+                            dailyKeys.get(0),
+                            0,
+                            Math.max(topBuyersCount - 1, 0),
+                            Long.class
+                    );
+                    topBuyerIds = new ArrayList<>(topSet);
+                } else {
+                    // 多日并集聚合到临时键，再读取TopN
+                    String rangeLabel = today.minusDays(dailyKeys.size() - 1).format(fmt) + "-" + today.format(fmt);
+                    RedisKeyBuild destKey = RedisKeyBuild.createRedisKey(
+                            RedisKeyManage.SECKILL_SHOP_TOP_BUYERS_UNION_TAG_KEY,
+                            shopId,
+                            rangeLabel
+                    );
+                    RedisKeyBuild base = dailyKeys.get(0);
+                    Collection<RedisKeyBuild> others = dailyKeys.subList(1, dailyKeys.size());
+                    try {
+                        redisCache.unionAndStoreForSortedSet(base, others, destKey);
+                        // 临时键设置短TTL，避免长期占用空间
+                        redisCache.expire(destKey, 60, TimeUnit.SECONDS);
+                    } catch (Exception e) {
+                        log.warn("[DELAY_REMINDER_CONSUMER] ZSET并集失败 shopId={} range={}", shopId, rangeLabel, e);
+                    }
+                    Set<Long> topSet = redisCache.getReverseRangeForSortedSet(
+                            destKey,
+                            0,
+                            Math.max(topBuyersCount - 1, 0),
+                            Long.class
+                    );
+                    topBuyerIds = new ArrayList<>(topSet);
+                }
                 for (Long uid : topBuyerIds) {
-                    if (uid != null) { 
-                        userIds.add(String.valueOf(uid)); 
+                    if (Objects.nonNull(uid)) {
+                        userIds.add(String.valueOf(uid));
                     }
                 }
             } catch (Exception ex) {
-                log.warn("[DELAY_REMINDER_CONSUMER] 查询店铺Top购买用户失败, shopId={}, days={}, count={}, ex={}", shopId, topBuyersDays, topBuyersCount, ex.getMessage());
+                log.warn("[DELAY_REMINDER_CONSUMER] 从Redis读取店铺Top买家失败 shopId={} days={} count={} ex={}",
+                        shopId, topBuyersDays, topBuyersCount, ex.getMessage());
             }
         }
         return userIds;
