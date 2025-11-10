@@ -13,6 +13,8 @@ public enum RedisKeyManage {
     /**
      * redis 缓存 key管理
      * */
+    USER_INFO_KEY("user:info:%s","用户id","value为UserInfo类型","k"),
+    
     CACHE_SHOP_KEY("cache:shop:%s","商铺id","value为Shop类型","k"),
     
     CACHE_SHOP_KEY_NULL("cache:shop_null:%s","商铺id","value为这是空值","k"),
@@ -139,6 +141,18 @@ public enum RedisKeyManage {
      * 将多日的每日ZSET并集聚合到该临时键
      */
     SECKILL_SHOP_TOP_BUYERS_UNION_TAG_KEY("seckill:shop:topbuyers:union:{%s}:%s","商铺id（同槽位HashTag）与聚合范围","临时ZSET，member为用户id，score为购买次数合并","k"),
+
+    /**
+     * 用户等级倒排索引：用户集合（SET，带Hash Tag，level同槽位）
+     * member 为用户id，用于避免按 level 的跨分片全路由查询
+     */
+    SECKILL_USER_LEVEL_MEMBERS_TAG_KEY("seckill:user:level:{%s}:members","用户等级（同槽位HashTag）","SET，member为用户id","k"),
+
+    /**
+     * 用户等级倒排索引：临时并集键（SET，带标签）
+     * 将多个 level 的成员集合并集到临时键，便于抽样
+     */
+    SECKILL_USER_LEVEL_MEMBERS_UNION_TAG_KEY("seckill:user:level:union:{%s}","用户等级范围标签","临时SET，member为用户id","k"),
     
     ;
 

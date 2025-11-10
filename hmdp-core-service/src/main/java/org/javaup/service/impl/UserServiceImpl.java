@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
+import org.javaup.core.RedisKeyManage;
 import org.javaup.dto.LoginFormDTO;
 import org.javaup.dto.Result;
 import org.javaup.dto.UserDTO;
@@ -15,6 +16,8 @@ import org.javaup.entity.User;
 import org.javaup.entity.UserInfo;
 import org.javaup.entity.UserPhone;
 import org.javaup.mapper.UserMapper;
+import org.javaup.redis.RedisCache;
+import org.javaup.redis.RedisKeyBuild;
 import org.javaup.service.IUserInfoService;
 import org.javaup.service.IUserPhoneService;
 import org.javaup.service.IUserService;
@@ -60,6 +63,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     
     @Resource
     private IUserPhoneService userPhoneService;
+
+    @Resource
+    private RedisCache redisCache;
 
     @Override
     public Result<String> sendCode(String phone, HttpSession session) {
@@ -129,6 +135,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         );
 
         // 8.返回token
+        // 8.1 维护等级倒排索引集合成员（best-effort）
+        try {
+            maintainLevelSetMembership(user.getId());
+        } catch (Exception e) {
+            // 忽略异常，避免影响登录
+        }
         return Result.ok(token);
     }
 
@@ -204,6 +216,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         userInfo.setUserId(user.getId());
         userInfo.setLevel(1);
         userInfoService.save(userInfo);
+        // 3.1 维护等级倒排索引集合成员（best-effort）
+        try {
+            maintainLevelSetMembership(user.getId());
+        } catch (Exception e) {
+            // 忽略异常，避免影响注册逻辑
+        }
         // 4.保存用户手机信息
         UserPhone userPhone = new UserPhone();
         userPhone.setId(snowflakeIdGenerator.nextId());
@@ -211,5 +229,23 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         userPhone.setPhone(phone);
         userPhoneService.save(userPhone);
         return user;
+    }
+
+    /**
+     * 将用户加入其等级对应的倒排索引集合
+     */
+    private void maintainLevelSetMembership(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        UserInfo info = userInfoService.lambdaQuery().eq(UserInfo::getUserId, userId).one();
+        if (info == null || info.getLevel() == null || info.getLevel() <= 0) {
+            return;
+        }
+        Integer level = info.getLevel();
+        redisCache.addForSet(
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_LEVEL_MEMBERS_TAG_KEY, level),
+                userId
+        );
     }
 }

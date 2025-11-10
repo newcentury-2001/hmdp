@@ -86,12 +86,19 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
      * */
     @Value("${seckill.reminder.notify.top.buyers.count:200}")
     private int topBuyersCount;
+    /**
+     * 最大会员等级（用于按minLevel进行集合并集范围）
+     */
+    @Value("${seckill.reminder.notify.user.level.max:10}")
+    private int maxUserLevel;
     
     @Override
     public void execute(final String content) {
         try {
             DelayedVoucherReminderMessage msg = parseMessage(content);
-            if (msg == null) { return; }
+            if (Objects.isNull(msg)) { 
+                return; 
+            }
             Long voucherId = msg.getVoucherId();
             SeckillVoucherFullModel voucherFull = seckillVoucherService.queryByVoucherId(voucherId);
             if (voucherFull == null) {
@@ -144,16 +151,43 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
     }
 
     private List<UserInfo> queryEligibleUserInfos(String allowedLevelsStr, Integer minLevel) {
+        // 1) 优先使用Redis集合倒排索引，避免DB按level的全路由
         if (StrUtil.isNotBlank(allowedLevelsStr)) {
             Set<Integer> allowed = parseAllowedLevels(allowedLevelsStr);
             if (CollectionUtil.isNotEmpty(allowed)) {
+                List<Long> fromRedis = readUserIdsFromLevelSets(new ArrayList<>(allowed), maxNotifyUsers);
+                if (CollectionUtil.isNotEmpty(fromRedis)) {
+                    List<UserInfo> list = new ArrayList<>(fromRedis.size());
+                    for (Long uid : fromRedis) { 
+                        if (uid != null) { 
+                            UserInfo u = new UserInfo(); 
+                            u.setUserId(uid); 
+                            list.add(u);
+                        } 
+                    }
+                    return list;
+                }
+                // Redis集合为空或未构建时，回退到DB查询（可能全路由）
                 return userInfoService.lambdaQuery()
                         .select(UserInfo::getUserId, UserInfo::getLevel)
                         .in(UserInfo::getLevel, allowed)
                         .last("limit " + maxNotifyUsers)
                         .list();
             }
+            // allowedLevels无效时按minLevel处理
             int useMin = Objects.nonNull(minLevel) ? minLevel : defaultMinLevel;
+            List<Long> fromRedis = readUserIdsFromLevelSets(buildLevelRange(useMin, maxUserLevel), maxNotifyUsers);
+            if (CollectionUtil.isNotEmpty(fromRedis)) {
+                List<UserInfo> list = new ArrayList<>(fromRedis.size());
+                for (Long uid : fromRedis) { 
+                    if (uid != null) {
+                        UserInfo u = new UserInfo(); 
+                        u.setUserId(uid); 
+                        list.add(u);
+                    } 
+                }
+                return list;
+            }
             return userInfoService.lambdaQuery()
                     .select(UserInfo::getUserId, UserInfo::getLevel)
                     .ge(UserInfo::getLevel, useMin)
@@ -161,11 +195,35 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
                     .list();
         }
         if (Objects.nonNull(minLevel)) {
+            List<Long> fromRedis = readUserIdsFromLevelSets(buildLevelRange(minLevel, maxUserLevel), maxNotifyUsers);
+            if (CollectionUtil.isNotEmpty(fromRedis)) {
+                List<UserInfo> list = new ArrayList<>(fromRedis.size());
+                for (Long uid : fromRedis) { 
+                    if (uid != null) { 
+                        UserInfo u = new UserInfo(); 
+                        u.setUserId(uid); list.add(u);
+                    } 
+                }
+                return list;
+            }
             return userInfoService.lambdaQuery()
                     .select(UserInfo::getUserId, UserInfo::getLevel)
                     .ge(UserInfo::getLevel, minLevel)
                     .last("limit " + maxNotifyUsers)
                     .list();
+        }
+        // 默认最小等级
+        List<Long> fromRedis = readUserIdsFromLevelSets(buildLevelRange(defaultMinLevel, maxUserLevel), maxNotifyUsers);
+        if (CollectionUtil.isNotEmpty(fromRedis)) {
+            List<UserInfo> list = new ArrayList<>(fromRedis.size());
+            for (Long uid : fromRedis) { 
+                if (uid != null) { 
+                    UserInfo u = new UserInfo(); 
+                    u.setUserId(uid); 
+                    list.add(u);
+                } 
+            }
+            return list;
         }
         return userInfoService.lambdaQuery()
                 .select(UserInfo::getUserId, UserInfo::getLevel)
@@ -174,13 +232,66 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
                 .list();
     }
 
+    private List<Integer> buildLevelRange(int min, int max) {
+        int from = Math.max(min, 1);
+        int to = Math.max(max, from);
+        List<Integer> levels = new ArrayList<>(to - from + 1);
+        for (int lv = from; lv <= to; lv++) { 
+            levels.add(lv); 
+        }
+        return levels;
+    }
+
+    private List<Long> readUserIdsFromLevelSets(List<Integer> levels, int count) {
+        if (CollectionUtil.isEmpty(levels)) { 
+            return Collections.emptyList(); 
+        }
+        // 构造集合键
+        List<RedisKeyBuild> keys = new ArrayList<>(levels.size());
+        for (Integer lv : levels) {
+            if (lv == null) { 
+                continue; 
+            }
+            keys.add(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_LEVEL_MEMBERS_TAG_KEY, lv));
+        }
+        if (keys.isEmpty()) { 
+            return Collections.emptyList();
+        }
+        // 单集合直接抽样，多集合并集到临时键后抽样
+        if (keys.size() == 1) {
+            Set<Long> r = redisCache.distinctRandomMembersForSet(keys.get(0), Math.max(count, 1), Long.class);
+            return new ArrayList<>(r);
+        }
+        String label;
+        if (levels.size() >= 2) { 
+            label = levels.get(0) + "-" + levels.get(levels.size()-1); 
+        } else { 
+            label = String.valueOf(levels.get(0)); 
+        }
+        RedisKeyBuild dest = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_LEVEL_MEMBERS_UNION_TAG_KEY, label);
+        RedisKeyBuild base = keys.get(0);
+        Collection<RedisKeyBuild> others = keys.subList(1, keys.size());
+        try {
+            redisCache.unionAndStoreForSet(base, others, dest);
+            redisCache.expire(dest, 60, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("[DELAY_REMINDER_CONSUMER] SET并集失败 levels={} label={}", levels, label, e);
+        }
+        Set<Long> r = redisCache.distinctRandomMembersForSet(dest, Math.max(count, 1), Long.class);
+        return new ArrayList<>(r);
+    }
+
     private Set<Integer> parseAllowedLevels(String allowedLevelsStr) {
         Set<Integer> allowed = new HashSet<>();
         if (StrUtil.isBlank(allowedLevelsStr)) { return allowed; }
         String[] parts = allowedLevelsStr.split(",");
         for (String s : parts) {
             if (StrUtil.isNotBlank(s)) {
-                try { allowed.add(Integer.valueOf(s.trim())); } catch (Exception ignore) {}
+                try { 
+                    allowed.add(Integer.valueOf(s.trim())); 
+                } catch (Exception ignore) {
+                    
+                }
             }
         }
         return allowed;
@@ -256,7 +367,9 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
             } catch (Exception e) {
                 shouldNotify = true;
             }
-            if (!shouldNotify) { continue; }
+            if (!shouldNotify) { 
+                continue; 
+            }
             String notifyContent = String.format("[REMINDER] voucherId=%s userId=%s beginTime=%s",
                     voucherId, userIdStr, beginTime);
             if (smsEnabled && StrUtil.isNotBlank(smsTo)) {

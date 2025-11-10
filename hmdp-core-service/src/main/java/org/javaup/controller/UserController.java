@@ -20,6 +20,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Objects;
+
 /**
  * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: 用户api
@@ -84,6 +87,18 @@ public class UserController {
         info.setUpdateTime(null);
         // 返回
         return Result.ok(info);
+    }
+
+    /**
+     * 当前登录用户更新等级
+     */
+    @PostMapping("/level/update")
+    public Result<Void> updateLevel(@RequestParam("newLevel") Integer newLevel) {
+        UserDTO current = UserHolder.getUser();
+        if (Objects.isNull(current)) {
+            return Result.fail("未登录");
+        }
+        return userInfoService.updateUserLevel(current.getId(), newLevel);
     }
 
     @GetMapping("/{id}")

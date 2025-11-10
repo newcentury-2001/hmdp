@@ -142,13 +142,17 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         SECKILL_SCRIPT.setResultType(Long.class);
     }
 
+    private static final int CPU_CORES = Runtime.getRuntime().availableProcessors();
+    private static final int EXECUTOR_THREADS = Math.max(2, CPU_CORES);
+    private static final int EXECUTOR_QUEUE_CAPACITY = 1024 * Math.max(1, CPU_CORES);
+
     private static final ThreadPoolExecutor SECKILL_ORDER_EXECUTOR =
             new ThreadPoolExecutor(
-                    1,
-                    1,
+                    EXECUTOR_THREADS,
+                    EXECUTOR_THREADS,
                     0L,
                     TimeUnit.MILLISECONDS,
-                    new LinkedBlockingQueue<>(1024),
+                    new LinkedBlockingQueue<>(EXECUTOR_QUEUE_CAPACITY),
                     new NamedThreadFactory("seckill-order-", false),
                     new ThreadPoolExecutor.CallerRunsPolicy()
             );
@@ -389,8 +393,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (!hasLevelRule) {
             return;
         }
-        //TODO
-        UserInfo userInfo = userInfoService.getById(userId);
+        UserInfo userInfo = userInfoService.getByUserId(userId);
         if (Objects.isNull(userInfo)) {
             throw new HmdpFrameException(BaseCode.USER_NOT_EXIST);
         }
@@ -516,26 +519,28 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 "order created",
                 message
         );
-        //TODO 改成线程池执行
-        // 订单创建成功后，清理该用户在订阅ZSET中的排队位置（避免后续重复分配）
-        try {
-            RedisKeyBuild subscribeZSetKey = RedisKeyBuild.createRedisKey(
-                    RedisKeyManage.SECKILL_SUBSCRIBE_ZSET_TAG_KEY,
-                    messageBody.getVoucherId()
-            );
-            redisCache.delForSortedSet(subscribeZSetKey, String.valueOf(userId));
-        } catch (Exception e) {
-            log.warn("清理订阅ZSET成员失败，voucherId={}, userId={}, err={}", messageBody.getVoucherId(), userId, e.getMessage());
-        }
-        // 自动发券场景：发送用户通知（短信/APP）并做去重
-        if (Boolean.TRUE.equals(messageBody.getAutoIssue())) {
+        // 使用线程池异步执行后续清理与通知逻辑
+        SECKILL_ORDER_EXECUTOR.execute(() -> {
+            // 订单创建成功后，清理该用户在订阅ZSET中的排队位置（避免后续重复分配）
             try {
-                autoIssueNotifyService.sendAutoIssueNotify(voucherOrder.getVoucherId(), userId, voucherOrder.getId());
+                RedisKeyBuild subscribeZSetKey = RedisKeyBuild.createRedisKey(
+                        RedisKeyManage.SECKILL_SUBSCRIBE_ZSET_TAG_KEY,
+                        messageBody.getVoucherId()
+                );
+                redisCache.delForSortedSet(subscribeZSetKey, String.valueOf(userId));
             } catch (Exception e) {
-                log.warn("自动发券通知发送失败，voucherId={}, userId={}, orderId={}, err={}",
-                        voucherOrder.getVoucherId(), userId, voucherOrder.getId(), e.getMessage());
+                log.warn("清理订阅ZSET成员失败，voucherId={}, userId={}, err={}", messageBody.getVoucherId(), userId, e.getMessage());
             }
-        }
+            // 自动发券场景：发送用户通知（短信/APP）并做去重
+            if (Boolean.TRUE.equals(messageBody.getAutoIssue())) {
+                try {
+                    autoIssueNotifyService.sendAutoIssueNotify(voucherOrder.getVoucherId(), userId, voucherOrder.getId());
+                } catch (Exception e) {
+                    log.warn("自动发券通知发送失败，voucherId={}, userId={}, orderId={}, err={}",
+                            voucherOrder.getVoucherId(), userId, voucherOrder.getId(), e.getMessage());
+                }
+            }
+        });
         return true;
     }
     

@@ -2366,7 +2366,6 @@ public Result seckillVoucher(Long voucherId) {
         // 2.1.不为0 ，代表没有购买资格
         return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
     }
-    //TODO 保存阻塞队列
     // 3.返回订单id
     return Result.ok(orderId);
 }
