@@ -24,6 +24,7 @@ import org.javaup.entity.VoucherOrderRouter;
 import org.javaup.enums.BaseCode;
 import org.javaup.enums.BusinessType;
 import org.javaup.enums.LogType;
+import org.javaup.enums.OrderStatus;
 import org.javaup.enums.SeckillVoucherOrderOperate;
 import org.javaup.exception.HmdpFrameException;
 import org.javaup.kafka.message.SeckillVoucherMessage;
@@ -476,7 +477,16 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     public boolean createVoucherOrderV2(MessageExtend<SeckillVoucherMessage> message) {
         SeckillVoucherMessage messageBody = message.getMessageBody();
         Long userId = messageBody.getUserId();
-
+        
+        VoucherOrder normalVoucherOrder = lambdaQuery()
+                .eq(VoucherOrder::getVoucherId, messageBody.getVoucherId())
+                .eq(VoucherOrder::getUserId, userId)
+                .eq(VoucherOrder::getStatus,OrderStatus.NORMAL.getCode())
+                .one();
+        if (Objects.nonNull(normalVoucherOrder)) {
+            log.warn("已存在此订单，voucherId：{},userId：{}", normalVoucherOrder.getVoucherId(), userId);
+            throw new HmdpFrameException(BaseCode.VOUCHER_ORDER_EXIST);
+        }
         // 扣减库存
         boolean success = seckillVoucherService.update()
                 // set stock = stock - 1
@@ -545,6 +555,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         VoucherOrder voucherOrder = lambdaQuery()
                 .eq(VoucherOrder::getUserId, UserHolder.getUser().getId())
                 .eq(VoucherOrder::getVoucherId, getVoucherOrderByVoucherIdDto.getVoucherId())
+                .eq(VoucherOrder::getStatus, OrderStatus.NORMAL.getCode())
                 .one();
         if (Objects.nonNull(voucherOrder)) {
             return voucherOrder.getId();
@@ -558,6 +569,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         VoucherOrder voucherOrder = lambdaQuery()
                 .eq(VoucherOrder::getUserId, UserHolder.getUser().getId())
                 .eq(VoucherOrder::getVoucherId, cancelVoucherOrderDto.getVoucherId())
+                .eq(VoucherOrder::getStatus, OrderStatus.NORMAL.getCode())
                 .one();
         if (Objects.isNull(voucherOrder)) {
             throw new HmdpFrameException(BaseCode.SECKILL_VOUCHER_ORDER_NOT_EXIST);

@@ -4,9 +4,11 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.javaup.consumer.AbstractConsumerHandler;
 import org.javaup.core.RedisKeyManage;
+import org.javaup.enums.BaseCode;
 import org.javaup.enums.BusinessType;
 import org.javaup.enums.LogType;
 import org.javaup.enums.SeckillVoucherOrderOperate;
+import org.javaup.exception.HmdpFrameException;
 import org.javaup.kafka.message.SeckillVoucherMessage;
 import org.javaup.kafka.redis.RedisVoucherData;
 import org.javaup.message.MessageExtend;
@@ -18,7 +20,6 @@ import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IVoucherOrderService;
 import org.javaup.service.IVoucherReconcileLogService;
 import org.javaup.toolkit.SnowflakeIdGenerator;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
@@ -268,8 +269,11 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
                                        final Throwable throwable) {
         super.afterConsumeFailure(message, throwable);
         SeckillVoucherOrderOperate seckillVoucherOrderOperate = SeckillVoucherOrderOperate.YES;
-        if (throwable instanceof DuplicateKeyException) {
-            seckillVoucherOrderOperate = SeckillVoucherOrderOperate.NO;
+        if (throwable instanceof HmdpFrameException hmdpFrameException) {
+            if (Objects.nonNull(hmdpFrameException.getCode()) && 
+                    hmdpFrameException.getCode().equals(BaseCode.VOUCHER_ORDER_EXIST.getCode())){
+                seckillVoucherOrderOperate = SeckillVoucherOrderOperate.NO;
+            }
         }
         long traceId = snowflakeIdGenerator.nextId();
         redisVoucherData.rollbackRedisVoucherData(

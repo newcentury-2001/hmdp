@@ -35,6 +35,10 @@ public enum BaseCode {
     
     VOUCHER_EXPIRED(10012,"优惠券已过期"),
     
+    VOUCHER_ORDER_EXIST(10013,"优惠券订单已存在"),
+    
+    VOUCHER_ORDER_CANCEL(10014,"优惠券订单已取消"),
+    
     USER_NOT_EXIST(20000, "用户不存在"),
     
     USER_ALREADY_PURCHASE(20001, "用户已经购买"),
