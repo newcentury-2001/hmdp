@@ -1,5 +1,6 @@
 package org.javaup.service.impl;
 
+import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.LocalDateTimeUtil;
 import jakarta.annotation.Resource;
 import org.javaup.core.RedisKeyManage;
@@ -14,15 +15,19 @@ import org.javaup.service.IReconciliationTaskService;
 import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IVoucherOrderService;
 import org.javaup.service.IVoucherReconcileLogService;
+import org.javaup.servicelock.LockType;
+import org.javaup.servicelock.annotion.ServiceLock;
 import org.springframework.stereotype.Service;
+import org.springframework.aop.framework.AopContext;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+
+import static org.javaup.constant.DistributedLockConstants.UPDATE_SECKILL_VOUCHER_STOCK_LOCK;
 
 /**
  * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
@@ -50,93 +55,121 @@ public class ReconciliationTaskServiceImpl implements IReconciliationTaskService
         for (SeckillVoucher seckillVoucher : seckillVoucherList) {
             reconciliationTaskExecute(seckillVoucher.getVoucherId());
         }
-        
-        
     }
     
     public void reconciliationTaskExecute(Long voucherId){
-        List<VoucherOrder> voucherOrderList = voucherOrderService.lambdaQuery()
+        List<VoucherOrder> voucherOrderList = loadPendingOrders(voucherId);
+        for (VoucherOrder voucherOrder : voucherOrderList) {
+            List<VoucherReconcileLog> logs = loadReconcileLogs(voucherOrder.getId());
+            if (CollectionUtil.isEmpty(logs)) {
+                markOrderStatus(voucherOrder.getId(), ReconciliationStatus.ABNORMAL);
+                continue;
+            }
+
+            Map<String, RedisTraceLogModel> redisTraceLogMap = loadRedisTraceLogMap(voucherId);
+            RedisKeyBuild traceLogKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_TRACE_LOG_TAG_KEY, voucherId);
+            long ttlSeconds = resolveTraceTtlSeconds(traceLogKey, voucherId);
+            boolean anyMissing = backfillMissingTraceLogs(logs, redisTraceLogMap, traceLogKey, ttlSeconds);
+
+            int dbLogCount = logs.size();
+            boolean markConsistent = true;
+            if (dbLogCount == 1 || dbLogCount == 2) {
+                if (anyMissing) {
+                    ((IReconciliationTaskService) AopContext.currentProxy()).delRedisStock(voucherId);
+                }
+            } else {
+                markOrderStatus(voucherOrder.getId(), ReconciliationStatus.ABNORMAL);
+                markConsistent = false;
+            }
+
+            if (markConsistent) {
+                markOrderStatus(voucherOrder.getId(), ReconciliationStatus.CONSISTENT);
+            }
+        }
+    }
+    @Override
+    @ServiceLock(lockType= LockType.Write,name = UPDATE_SECKILL_VOUCHER_STOCK_LOCK,keys = {"#voucherId"})
+    public void delRedisStock(Long voucherId){
+        // Redis 中库存键（用于必要时删除以触发按需加载）
+        RedisKeyBuild stockKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId);
+        redisCache.del(stockKey);
+    }
+
+    private List<VoucherOrder> loadPendingOrders(Long voucherId) {
+        return voucherOrderService.lambdaQuery()
                 .eq(VoucherOrder::getVoucherId, voucherId)
                 .le(VoucherOrder::getCreateTime, LocalDateTimeUtil.offset(LocalDateTimeUtil.now(), 2, ChronoUnit.MINUTES))
                 .eq(VoucherOrder::getReconciliationStatus, ReconciliationStatus.PENDING.getCode())
                 .orderByAsc(VoucherOrder::getCreateTime)
                 .list();
-        for (VoucherOrder voucherOrder : voucherOrderList) {
-            List<VoucherReconcileLog> voucherReconcileLogList = voucherReconcileLogService.lambdaQuery()
-                    .eq(VoucherReconcileLog::getOrderId, voucherOrder.getId())
-                    .orderByAsc(VoucherReconcileLog::getCreateTime)
-                    .list();
-            if (voucherReconcileLogList == null || voucherReconcileLogList.isEmpty()) {
-                // 未找到任何对账日志，标记为异常
-                voucherOrderService.lambdaUpdate()
-                        .set(VoucherOrder::getReconciliationStatus, ReconciliationStatus.ABNORMAL.getCode())
-                        .eq(VoucherOrder::getId, voucherOrder.getId())
-                        .update();
+    }
+
+    private List<VoucherReconcileLog> loadReconcileLogs(Long orderId) {
+        return voucherReconcileLogService.lambdaQuery()
+                .eq(VoucherReconcileLog::getOrderId, orderId)
+                .orderByAsc(VoucherReconcileLog::getCreateTime)
+                .list();
+    }
+
+    private Map<String, RedisTraceLogModel> loadRedisTraceLogMap(Long voucherId) {
+        return redisCache.getAllMapForHash(
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_TRACE_LOG_TAG_KEY, voucherId),
+                RedisTraceLogModel.class
+        );
+    }
+
+    private long resolveTraceTtlSeconds(RedisKeyBuild traceLogKey, Long voucherId) {
+        Long ttlSeconds = redisCache.getExpire(traceLogKey, TimeUnit.SECONDS);
+        if (ttlSeconds != null && ttlSeconds > 0) {
+            return ttlSeconds;
+        }
+        SeckillVoucher voucher = seckillVoucherService.lambdaQuery()
+                .eq(SeckillVoucher::getVoucherId, voucherId)
+                .one();
+        long computedTtl = 3600L;
+        if (voucher != null && voucher.getEndTime() != null) {
+            LocalDateTime now = LocalDateTimeUtil.now();
+            long secondsUntilEnd = Math.max(0L, Duration.between(now, voucher.getEndTime()).getSeconds());
+            computedTtl = Math.max(1L, secondsUntilEnd + Duration.ofDays(1).getSeconds());
+        }
+        return computedTtl;
+    }
+
+    private boolean backfillMissingTraceLogs(List<VoucherReconcileLog> logs,
+                                             Map<String, RedisTraceLogModel> redisTraceLogMap,
+                                             RedisKeyBuild traceLogKey,
+                                             long ttlSeconds) {
+        boolean anyMissing = false;
+        for (VoucherReconcileLog log : logs) {
+            String traceIdStr = String.valueOf(log.getTraceId());
+            RedisTraceLogModel existed = redisTraceLogMap.get(traceIdStr);
+            if (existed != null) {
                 continue;
             }
-            
-            Map<String, RedisTraceLogModel> redisTraceLogMap =
-                    redisCache.getAllMapForHash(
-                            RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_TRACE_LOG_TAG_KEY, voucherId),
-                            RedisTraceLogModel.class
-                    );
-
-            // Redis 中对账日志键
-            RedisKeyBuild traceLogKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_TRACE_LOG_TAG_KEY, voucherId);
-            // Redis 中库存键
-            RedisKeyBuild stockKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId);
-
-            // 预先计算 traceLogKey 的 TTL（若当前没有 TTL）
-            Long ttlSeconds = redisCache.getExpire(traceLogKey, TimeUnit.SECONDS);
-            if (ttlSeconds == null || ttlSeconds <= 0) {
-                SeckillVoucher voucher = seckillVoucherService.lambdaQuery()
-                        .eq(SeckillVoucher::getVoucherId, voucherId)
-                        .one();
-                // 默认一小时
-                long computedTtl = 3600L; 
-                if (voucher != null && voucher.getEndTime() != null) {
-                    LocalDateTime now = LocalDateTimeUtil.now();
-                    long secondsUntilEnd = Math.max(0L, Duration.between(now, voucher.getEndTime()).getSeconds());
-                    computedTtl = Math.max(1L, secondsUntilEnd + Duration.ofDays(1).getSeconds());
-                }
-                ttlSeconds = computedTtl;
+            anyMissing = true;
+            RedisTraceLogModel model = new RedisTraceLogModel();
+            model.setLogType(String.valueOf(log.getLogType()));
+            model.setTs(LocalDateTimeUtil.toEpochMilli(log.getCreateTime()));
+            model.setOrderId(String.valueOf(log.getOrderId()));
+            model.setTraceId(traceIdStr);
+            model.setUserId(String.valueOf(log.getUserId()));
+            model.setVoucherId(String.valueOf(log.getVoucherId()));
+            model.setBeforeQty(log.getBeforeQty());
+            model.setChangeQty(log.getChangeQty());
+            model.setAfterQty(log.getAfterQty());
+            redisCache.putHash(traceLogKey, traceIdStr, model);
+            Long currentTtl = redisCache.getExpire(traceLogKey, TimeUnit.SECONDS);
+            if (currentTtl == null || currentTtl <= 0) {
+                redisCache.expire(traceLogKey, ttlSeconds, TimeUnit.SECONDS);
             }
-
-            for (VoucherReconcileLog voucherReconcileLog : voucherReconcileLogList) {
-                Long traceId = voucherReconcileLog.getTraceId();
-                String traceIdStr = String.valueOf(traceId);
-                RedisTraceLogModel existed = redisTraceLogMap.get(traceIdStr);
-
-                // 1) 若 Redis 缺少该 trace 日志，则根据数据库日志补齐
-                if (Objects.isNull(existed)) {
-                    RedisTraceLogModel model = new RedisTraceLogModel();
-                    model.setLogType(String.valueOf(voucherReconcileLog.getLogType()));
-                    model.setTs(LocalDateTimeUtil.toEpochMilli(voucherReconcileLog.getCreateTime()));
-                    model.setOrderId(String.valueOf(voucherReconcileLog.getOrderId()));
-                    model.setTraceId(traceIdStr);
-                    model.setUserId(String.valueOf(voucherReconcileLog.getUserId()));
-                    model.setVoucherId(String.valueOf(voucherReconcileLog.getVoucherId()));
-                    model.setBeforeQty(voucherReconcileLog.getBeforeQty());
-                    model.setChangeQty(voucherReconcileLog.getChangeQty());
-                    model.setAfterQty(voucherReconcileLog.getAfterQty());
-
-                    // 写入 Redis Hash：field 为 traceId
-                    redisCache.putHash(traceLogKey, traceIdStr, model);
-                    // 若 trace 日志键无 TTL，则补上
-                    Long currentTtl = redisCache.getExpire(traceLogKey, TimeUnit.SECONDS);
-                    if (currentTtl == null || currentTtl <= 0) {
-                        redisCache.expire(traceLogKey, ttlSeconds, TimeUnit.SECONDS);
-                    }
-
-                    // 不在此处修改库存，避免因数据库日志顺序与实际执行顺序不一致造成错误校正
-                }
-            }
-
-            // 3) 本订单对账完成，标记为一致
-            voucherOrderService.lambdaUpdate()
-                    .set(VoucherOrder::getReconciliationStatus, ReconciliationStatus.CONSISTENT.getCode())
-                    .eq(VoucherOrder::getId, voucherOrder.getId())
-                    .update();
         }
+        return anyMissing;
+    }
+
+    private void markOrderStatus(Long orderId, ReconciliationStatus status) {
+        voucherOrderService.lambdaUpdate()
+                .set(VoucherOrder::getReconciliationStatus, status.getCode())
+                .eq(VoucherOrder::getId, orderId)
+                .update();
     }
 }
