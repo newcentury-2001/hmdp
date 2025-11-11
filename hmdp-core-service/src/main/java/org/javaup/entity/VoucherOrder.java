@@ -47,6 +47,9 @@ public class VoucherOrder implements Serializable {
      * 订单状态，1：正常；2：已取消；
      */
     private Integer status;
+    
+    /** 对账状态：1待处理；2异常；3不一致；4一致 */
+    private Integer reconciliationStatus;
 
     /**
      * 下单时间

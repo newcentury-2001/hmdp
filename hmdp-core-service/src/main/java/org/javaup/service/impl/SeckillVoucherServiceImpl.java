@@ -28,8 +28,10 @@ import java.util.concurrent.TimeUnit;
 
 import static org.javaup.constant.Constant.BLOOM_FILTER_HANDLER_VOUCHER;
 import static org.javaup.constant.DistributedLockConstants.UPDATE_SECKILL_VOUCHER_LOCK;
+import static org.javaup.constant.DistributedLockConstants.UPDATE_SECKILL_VOUCHER_STOCK_LOCK;
 import static org.javaup.utils.RedisConstants.CACHE_NULL_TTL;
 import static org.javaup.utils.RedisConstants.LOCK_SECKILL_VOUCHER_KEY;
+import static org.javaup.utils.RedisConstants.LOCK_SECKILL_VOUCHER_STOCK_KEY;
 
 /**
  * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
@@ -83,7 +85,7 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
             log.info("查询秒杀优惠券 布隆过滤器判断不存在 秒杀优惠券id : {}",voucherId);
             throw new RuntimeException("查询秒杀优惠券不存在");
         }
-        // 解决缓存穿透，从缓存中判断是否存在商铺空值信息，如果有，代表商铺不存在，直接返回
+        // 解决缓存穿透，从缓存中判断是否存在优惠券空值信息，如果有，代表优惠券不存在，直接返回
         Boolean existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId));
         if (existResult){
             throw new RuntimeException("查询秒杀优惠券不存在");
@@ -93,12 +95,12 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
         RLock lock = serviceLockTool.getLock(LockType.Reentrant, LOCK_SECKILL_VOUCHER_KEY, new String[]{String.valueOf(voucherId)});
         lock.lock();
         try {
-            // 再次从缓存中判断是否存在商铺空值信息，如果有，代表商铺不存在，直接返回
+            // 再次从缓存中判断是否存在优惠券空值信息，如果有，代表优惠券不存在，直接返回
             existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId));
             if (existResult){
                 throw new RuntimeException("查询商铺不存在");
             }
-            // 再次从缓存中获取商铺信息，通过此步骤可以避免大量请求在获取锁后，直接击穿缓存访问数据库
+            // 再次从缓存中获取优惠券信息，通过此步骤可以避免大量请求在获取锁后，直接击穿缓存访问数据库
             seckillVoucherFullModel = redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId), 
                     SeckillVoucherFullModel.class);
             // 如果缓存中存在就直接返回
@@ -120,13 +122,6 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
                     LocalDateTimeUtil.between(LocalDateTimeUtil.now(), seckillVoucher.getEndTime()).getSeconds(),
                     1L
             );
-            // 保存秒杀优惠券库存到Redis中（单槽位Hash Tag键）
-            redisCache.set(
-                    RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId),
-                    String.valueOf(seckillVoucher.getStock()),
-                    ttlSeconds,
-                    TimeUnit.SECONDS
-            );
             Voucher voucher = voucherService.lambdaQuery().eq(Voucher::getId, voucherId).one();
             // 保存秒杀优惠券详情到Redis中（单槽位Hash Tag键）
             seckillVoucherFullModel = new SeckillVoucherFullModel();
@@ -143,6 +138,51 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
             // 同步写入本地缓存
             seckillVoucherLocalCache.put(voucherId, seckillVoucherFullModel);
             return seckillVoucherFullModel;
+        }finally {
+            lock.unlock();
+        }
+    }
+    
+    @ServiceLock(lockType= LockType.Read,name = UPDATE_SECKILL_VOUCHER_STOCK_LOCK,keys = {"#voucherId"})
+    @Override
+    public void loadVoucherStock(Long voucherId){
+        // 通过布隆过滤器判断是否存在
+        if (!bloomFilterHandlerFactory.get(BLOOM_FILTER_HANDLER_VOUCHER).contains(String.valueOf(voucherId))) {
+            log.info("加载库存 布隆过滤器判断不存在 秒杀优惠券id : {}",voucherId);
+            throw new RuntimeException("查询秒杀优惠券不存在");
+        }
+        // 双重检测解决缓存击穿
+        String stock = 
+                redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId), String.class);
+        if (Objects.nonNull(stock)) {
+            return;
+        }
+        // 实现双重检测
+        // 加锁，解决缓存击穿
+        RLock lock = serviceLockTool.getLock(LockType.Reentrant, LOCK_SECKILL_VOUCHER_STOCK_KEY, 
+                new String[]{String.valueOf(voucherId)});
+        lock.lock();
+        try {
+            // 再次从缓存中获取优惠券信息，通过此步骤可以避免大量请求在获取锁后，直接击穿缓存访问数据库
+            stock = redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId), String.class);
+            if (Objects.nonNull(stock)) {
+                return;
+            }
+            // 如果缓存还不存在，查询数据库
+            SeckillVoucher seckillVoucher = lambdaQuery().eq(SeckillVoucher::getVoucherId,voucherId).one();
+            if (Objects.nonNull(seckillVoucher)) {
+                long ttlSeconds = Math.max(
+                        LocalDateTimeUtil.between(LocalDateTimeUtil.now(), seckillVoucher.getEndTime()).getSeconds(),
+                        1L
+                );
+                // 保存秒杀优惠券库存到Redis中（单槽位Hash Tag键）
+                redisCache.set(
+                        RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId),
+                        String.valueOf(seckillVoucher.getStock()),
+                        ttlSeconds,
+                        TimeUnit.SECONDS
+                );
+            }
         }finally {
             lock.unlock();
         }

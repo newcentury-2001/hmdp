@@ -15,6 +15,9 @@ local orderId = ARGV[3]
 local seckillVoucherOrderOperate = tonumber(ARGV[4])
 local traceId = ARGV[5]
 local logType = ARGV[6]
+local beforeQty = tonumber(ARGV[7])
+local changeQty = tonumber(ARGV[8])
+local afterQty = tonumber(ARGV[9])
 -- 备注：方案A不分片，所有操作在同槽位单键内完成
 
 -- 3.脚本业务
@@ -23,11 +26,9 @@ local stock = redis.call('get', stockKey);
 if not stock then
     return 10004
 end
--- 恢复库存
-local beforeQty = tonumber(stock)
-local changeQty = 1
-local afterQty = beforeQty + changeQty
-redis.call('incrby', stockKey, changeQty)
+
+-- 把库存删除
+redis.call('del', stockKey)
 if seckillVoucherOrderOperate == 1 then
     -- 删除下单记录（先判断存在再移除更稳妥）
     if (redis.call('sismember', seckillUserKey, userId) == 1) then

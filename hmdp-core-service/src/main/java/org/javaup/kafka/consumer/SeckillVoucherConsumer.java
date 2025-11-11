@@ -178,11 +178,15 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
                     traceId,
                     message.getMessageBody().getVoucherId(),
                     message.getMessageBody().getUserId(),
-                    message.getMessageBody().getOrderId()
+                    message.getMessageBody().getOrderId(),
+                    // 这是回滚操作，所以redis中扣减前和扣减后的数量要和消息中的反过来
+                    message.getMessageBody().getAfterQty(),
+                    message.getMessageBody().getChangeQty(),
+                    message.getMessageBody().getBeforeQty()
             );
             // 对账日志：异常-消息延迟丢弃
             try {
-                voucherReconcileLogService.saveReconcileLog(LogType.RESTORE, 
+                voucherReconcileLogService.saveReconcileLog(LogType.RESTORE.getCode(), 
                         BusinessType.TIMEOUT.getCode(), 
                         "message delayed " + delayTime + "ms, rollback redis", 
                         message);
@@ -281,12 +285,16 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
                 traceId,
                 message.getMessageBody().getVoucherId(),
                 message.getMessageBody().getUserId(),
-                message.getMessageBody().getOrderId()
+                message.getMessageBody().getOrderId(),
+                // 这是回滚操作，所以redis中扣减前和扣减后的数量要和消息中的反过来
+                message.getMessageBody().getAfterQty(),
+                message.getMessageBody().getChangeQty(),
+                message.getMessageBody().getBeforeQty()
         );
         // 对账日志：异常-消费失败
         try {
             String detail = throwable == null ? "consume failed" : ("consume failed: " + throwable.getMessage());
-            voucherReconcileLogService.saveReconcileLog(LogType.RESTORE,
+            voucherReconcileLogService.saveReconcileLog(LogType.RESTORE.getCode(),
                     BusinessType.FAIL.getCode(), 
                     detail, 
                     message

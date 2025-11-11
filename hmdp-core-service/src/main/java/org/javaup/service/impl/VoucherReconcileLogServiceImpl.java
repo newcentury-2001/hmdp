@@ -2,6 +2,7 @@ package org.javaup.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
+import org.javaup.dto.VoucherReconcileLogDto;
 import org.javaup.entity.VoucherReconcileLog;
 import org.javaup.enums.LogType;
 import org.javaup.kafka.message.SeckillVoucherMessage;
@@ -11,6 +12,8 @@ import org.javaup.service.IVoucherReconcileLogService;
 import org.javaup.toolkit.SnowflakeIdGenerator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 /**
  * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
@@ -24,36 +27,50 @@ public class VoucherReconcileLogServiceImpl extends ServiceImpl<VoucherReconcile
     @Resource
     private SnowflakeIdGenerator snowflakeIdGenerator;
     
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean saveReconcileLog(final Integer logType, final Integer businessType, final String detail, final MessageExtend<SeckillVoucherMessage> message) {
+        SeckillVoucherMessage messageBody = message.getMessageBody();
+        VoucherReconcileLogDto voucherReconcileLogDto = new VoucherReconcileLogDto();
+        voucherReconcileLogDto.setOrderId(messageBody.getOrderId());
+        voucherReconcileLogDto.setUserId(messageBody.getUserId());
+        voucherReconcileLogDto.setVoucherId(messageBody.getVoucherId());
+        voucherReconcileLogDto.setMessageId(message.getUuid());
+        voucherReconcileLogDto.setDetail(detail);
+        voucherReconcileLogDto.setBeforeQty(messageBody.getBeforeQty());
+        voucherReconcileLogDto.setChangeQty(messageBody.getChangeQty());
+        voucherReconcileLogDto.setAfterQty(messageBody.getAfterQty());
+        voucherReconcileLogDto.setTraceId(messageBody.getTraceId());
+        voucherReconcileLogDto.setLogType(logType);
+        voucherReconcileLogDto.setBusinessType(businessType);
+        return saveReconcileLog(voucherReconcileLogDto);
+    }
+    
     /**
      * 构建并保存对账日志：根据日志类型设置数量字段，记录业务过程数据。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void saveReconcileLog(final LogType logType, 
-                                 final Integer businessType, 
-                                 final String detail, 
-                                 final MessageExtend<SeckillVoucherMessage> message) {
-        SeckillVoucherMessage body = message.getMessageBody();
+    public boolean saveReconcileLog(VoucherReconcileLogDto voucherReconcileLogDto) {
         VoucherReconcileLog logEntity = new VoucherReconcileLog();
         logEntity.setId(snowflakeIdGenerator.nextId())
-                .setOrderId(body.getOrderId())
-                .setUserId(body.getUserId())
-                .setVoucherId(body.getVoucherId())
-                .setMessageId(message.getUuid())
-                .setBusinessType(businessType)
-                .setDetail(detail)
-                .setTraceId(body.getTraceId())
-                .setLogType(logType.getCode())
-                .setCreateTime(java.time.LocalDateTime.now())
-                .setUpdateTime(java.time.LocalDateTime.now())
-                .setBeforeQty(body.getBeforeQty())
-                .setChangeQty(body.getChangeQty())
-                .setAfterQty(body.getAfterQty())
-                .setTraceId(body.getTraceId());
-        if (logType == LogType.RESTORE) {
-            logEntity.setBeforeQty(body.getAfterQty());
-            logEntity.setAfterQty(body.getBeforeQty());
+                .setOrderId(voucherReconcileLogDto.getOrderId())
+                .setUserId(voucherReconcileLogDto.getUserId())
+                .setVoucherId(voucherReconcileLogDto.getVoucherId())
+                .setMessageId(voucherReconcileLogDto.getMessageId())
+                .setBusinessType(voucherReconcileLogDto.getBusinessType())
+                .setDetail(voucherReconcileLogDto.getDetail())
+                .setTraceId(voucherReconcileLogDto.getTraceId())
+                .setLogType(voucherReconcileLogDto.getLogType())
+                .setCreateTime(LocalDateTime.now())
+                .setUpdateTime(LocalDateTime.now())
+                .setBeforeQty(voucherReconcileLogDto.getBeforeQty())
+                .setChangeQty(voucherReconcileLogDto.getChangeQty())
+                .setAfterQty(voucherReconcileLogDto.getAfterQty());
+        if (voucherReconcileLogDto.getLogType().equals(LogType.RESTORE.getCode())) {
+            logEntity.setBeforeQty(voucherReconcileLogDto.getAfterQty());
+            logEntity.setAfterQty(voucherReconcileLogDto.getBeforeQty());
         }
-        save(logEntity);
+        return save(logEntity);
     }
 }

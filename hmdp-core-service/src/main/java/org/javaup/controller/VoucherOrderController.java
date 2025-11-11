@@ -7,17 +7,18 @@ import org.javaup.dto.CancelVoucherOrderDto;
 import org.javaup.dto.GetVoucherOrderByVoucherIdDto;
 import org.javaup.dto.GetVoucherOrderDto;
 import org.javaup.dto.Result;
-import org.javaup.service.IVoucherOrderService;
-import org.javaup.service.ISeckillAccessTokenService;
-import org.javaup.utils.UserHolder;
 import org.javaup.execute.RateLimitHandler;
 import org.javaup.ratelimit.extension.RateLimitScene;
+import org.javaup.service.IReconciliationTaskService;
+import org.javaup.service.ISeckillAccessTokenService;
+import org.javaup.service.IVoucherOrderService;
+import org.javaup.utils.UserHolder;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 
@@ -38,6 +39,9 @@ public class VoucherOrderController {
 
     @Resource
     private RateLimitHandler rateLimitHandler;
+    
+    @Resource
+    private IReconciliationTaskService reconciliationTaskService;
 
     @GetMapping("/seckill/token/{id}")
     public Result<String> issueSeckillAccessToken(@PathVariable("id") Long voucherId) {
@@ -75,5 +79,11 @@ public class VoucherOrderController {
     @PostMapping("/cancel")
     public Result<Boolean> cancel(@Valid @RequestBody CancelVoucherOrderDto cancelVoucherOrderDto) {
         return Result.ok(voucherOrderService.cancel(cancelVoucherOrderDto));
+    }
+    
+    @PostMapping(value = "/reconciliation/task/all")
+    public Result<Void> reconciliationTaskAll() {
+        reconciliationTaskService.reconciliationTaskExecute();
+        return Result.ok();
     }
 }

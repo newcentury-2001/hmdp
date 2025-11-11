@@ -90,7 +90,10 @@ public class RedisVoucherData {
                                          Long traceId,
                                          Long voucherId,
                                          Long userId,
-                                         Long orderId) {
+                                         Long orderId,
+                                         Integer beforeQty,
+                                         Integer changeQty,
+                                         Integer afterQty) {
         // 构建 Lua 执行参数：KEY 列表包含库存、已购用户集合、trace 日志集合
         List<String> keys = ListUtil.of(
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId).getRelKey(),
@@ -98,13 +101,16 @@ public class RedisVoucherData {
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_TRACE_LOG_TAG_KEY, voucherId).getRelKey()
         );
         // Lua ARGV：voucherId、userId、orderId、操作码、traceId、日志类型（恢复）
-        String[] args = new String[6];
+        String[] args = new String[9];
         args[0] = String.valueOf(voucherId);
         args[1] = String.valueOf(userId);
         args[2] = String.valueOf(orderId);
         args[3] = String.valueOf(seckillVoucherOrderOperate.getCode());
         args[4] = String.valueOf(traceId);
         args[5] = String.valueOf(LogType.RESTORE.getCode());
+        args[6] = String.valueOf(beforeQty);
+        args[7] = String.valueOf(changeQty);
+        args[8] = String.valueOf(afterQty);
 
         // 带退避的重试，返回最终结果码（成功返回 SUCCESS 码）
         Integer finalCode = luaRollbackWithResultCode(keys, args, retryMaxAttempts, initialBackoffMillis, maxBackoffMillis);

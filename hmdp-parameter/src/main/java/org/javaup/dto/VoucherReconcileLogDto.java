@@ -1,13 +1,10 @@
-package org.javaup.entity;
+package org.javaup.dto;
 
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
 
 /**
  * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
@@ -17,14 +14,10 @@ import java.time.LocalDateTime;
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
-@TableName("tb_voucher_reconcile_log")
-public class VoucherReconcileLog implements Serializable {
+public class VoucherReconcileLogDto implements Serializable {
 
     private static final long serialVersionUID = 1L;
-
-    /** 主键 */
-    @TableId(value = "id")
-    private Long id;
+    
 
     /** 订单id */
     private Long orderId;
@@ -50,7 +43,7 @@ public class VoucherReconcileLog implements Serializable {
     /** 改变之后库存数量 */
     private Integer afterQty;
 
-    /** 追踪唯一标识（与redis中关联） */
+    /** 追踪唯一标识（与订单关联） */
     private Long traceId;
     
     /** 记录类型 -1:扣减 1:恢复 */
@@ -58,13 +51,4 @@ public class VoucherReconcileLog implements Serializable {
     
     /** 业务类型：1创建订单成功；2创建订单超时；3创建订单失败 */
     private Integer businessType;
-    
-    /** 对账状态：1待处理；2异常；3不一致；4一致 */
-    private Integer reconciliationStatus;
-    
-    /** 创建时间 */
-    private LocalDateTime createTime;
-
-    /** 更新时间 */
-    private LocalDateTime updateTime;
 }

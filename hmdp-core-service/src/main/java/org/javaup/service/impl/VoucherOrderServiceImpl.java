@@ -17,6 +17,8 @@ import org.javaup.dto.CancelVoucherOrderDto;
 import org.javaup.dto.GetVoucherOrderByVoucherIdDto;
 import org.javaup.dto.GetVoucherOrderDto;
 import org.javaup.dto.Result;
+import org.javaup.dto.VoucherReconcileLogDto;
+import org.javaup.entity.SeckillVoucher;
 import org.javaup.entity.UserInfo;
 import org.javaup.entity.Voucher;
 import org.javaup.entity.VoucherOrder;
@@ -336,6 +338,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     
     public Result<Long> doSeckillVoucherV2(Long voucherId) {
         SeckillVoucherFullModel seckillVoucherFullModel = seckillVoucherService.queryByVoucherId(voucherId);
+        seckillVoucherService.loadVoucherStock(voucherId);
         Long userId = UserHolder.getUser().getId();
         verifyUserLevel(seckillVoucherFullModel,userId);
         // 限流统一在控制器层执行，避免重复计数与双重拦截
@@ -522,7 +525,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 TimeUnit.SECONDS
         );
         // 对账日志：一致-消费成功
-        voucherReconcileLogService.saveReconcileLog(LogType.DEDUCT,
+        voucherReconcileLogService.saveReconcileLog(
+                LogType.DEDUCT.getCode(),
                 BusinessType.SUCCESS.getCode(),
                 "order created",
                 message
@@ -574,19 +578,46 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (Objects.isNull(voucherOrder)) {
             throw new HmdpFrameException(BaseCode.SECKILL_VOUCHER_ORDER_NOT_EXIST);
         }
-        Integer i = voucherOrderMapper.deleteVoucherOrder(cancelVoucherOrderDto.getVoucherId(), UserHolder.getUser().getId());
-        Integer j = voucherOrderRouterMapper.deleteVoucherOrderRouter(voucherOrder.getId());
+        SeckillVoucher seckillVoucher = seckillVoucherService.lambdaQuery()
+                .eq(SeckillVoucher::getVoucherId, cancelVoucherOrderDto.getVoucherId())
+                .one();
+        if (Objects.isNull(seckillVoucher)) {
+            throw new HmdpFrameException(BaseCode.SECKILL_VOUCHER_NOT_EXIST);
+        }
+        boolean updateResult = lambdaUpdate().set(VoucherOrder::getStatus, OrderStatus.CANCEL.getCode())
+                .set(VoucherOrder::getUpdateTime, LocalDateTimeUtil.now())
+                .eq(VoucherOrder::getUserId, UserHolder.getUser().getId())
+                .eq(VoucherOrder::getVoucherId, cancelVoucherOrderDto.getVoucherId())
+                .update();
+        // 对账日志
+        long traceId = snowflakeIdGenerator.nextId();
+        VoucherReconcileLogDto voucherReconcileLogDto = new VoucherReconcileLogDto();
+        voucherReconcileLogDto.setOrderId(voucherOrder.getId());
+        voucherReconcileLogDto.setUserId(voucherOrder.getUserId());
+        voucherReconcileLogDto.setVoucherId(voucherOrder.getVoucherId());
+        voucherReconcileLogDto.setDetail("cancel voucher order ");
+        voucherReconcileLogDto.setBeforeQty(seckillVoucher.getStock());
+        voucherReconcileLogDto.setChangeQty(1);
+        voucherReconcileLogDto.setAfterQty(seckillVoucher.getStock() + 1);
+        voucherReconcileLogDto.setTraceId(traceId);
+        voucherReconcileLogDto.setLogType(LogType.RESTORE.getCode());
+        voucherReconcileLogDto.setBusinessType( BusinessType.CANCEL.getCode());
+        boolean saveReconcileLogResult = voucherReconcileLogService.saveReconcileLog(voucherReconcileLogDto);
+        
+        // 恢复库存
         boolean rollbackStockResult = seckillVoucherService.rollbackStock(cancelVoucherOrderDto.getVoucherId());
         
-        Boolean result = i > 0 && j > 0 && rollbackStockResult;
+        Boolean result = updateResult && saveReconcileLogResult && rollbackStockResult;
         if (result) {
-            long traceId = snowflakeIdGenerator.nextId();
             redisVoucherData.rollbackRedisVoucherData(
                     SeckillVoucherOrderOperate.YES,
                     traceId,
                     voucherOrder.getVoucherId(),
                     voucherOrder.getUserId(),
-                    voucherOrder.getId()
+                    voucherOrder.getId(),
+                    seckillVoucher.getStock(),
+                    1,
+                    seckillVoucher.getStock() + 1
             );
             // 将自己移除订阅队列
             redisCache.delForHash(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_SUBSCRIBE_STATUS_TAG_KEY, 
@@ -636,6 +667,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             // 数据不完整时终止自动发券
             return false;
         }
+        //需要再加载一次库存，防止修改数据或者对账执行时将此redis中的库存删除
+        seckillVoucherService.loadVoucherStock(voucherId);
         // 在订阅ZSET中查找最早且未购的候选用户（排除本次取消用户）
         String candidateUserIdStr = findEarliestCandidate(voucherId, excludeUserId);
         // 没有候选用户则结束流程

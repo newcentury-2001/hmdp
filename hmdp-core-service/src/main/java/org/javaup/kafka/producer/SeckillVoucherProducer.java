@@ -69,6 +69,10 @@ public class SeckillVoucherProducer extends AbstractProducerHandler<MessageExten
                 traceId,
                 message.getMessageBody().getVoucherId(),
                 message.getMessageBody().getUserId(),
-                message.getMessageBody().getOrderId());
+                message.getMessageBody().getOrderId(),
+                // 这是回滚操作，所以redis中扣减前和扣减后的数量要和消息中的反过来
+                message.getMessageBody().getAfterQty(),
+                message.getMessageBody().getChangeQty(),
+                message.getMessageBody().getBeforeQty());
     }
 }
