@@ -164,20 +164,4 @@ public class SnowflakeIdGenerator {
     protected long timeGen() {
         return SystemClock.now();
     }
-    
-    public static long parseIdTimestamp(long id) {
-        return (id>>22)+ BASIS_TIME;
-    }
-    
-    public long log2N(long count) {
-        return (long)(Math.log(count)/ Math.log(2));
-    }
-    
-    public long getMaxWorkerId() {
-        return maxWorkerId;
-    }
-    
-    public long getMaxDatacenterId() {
-        return maxDatacenterId;
-    }
 }
