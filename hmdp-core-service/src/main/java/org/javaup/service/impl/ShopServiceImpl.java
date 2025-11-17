@@ -72,7 +72,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     
     
     @Override
-    public Result saveShop(final Shop shop) {
+    public Result<Long> saveShop(final Shop shop) {
         // 写入数据库
         shop.setId(snowflakeIdGenerator.nextId());
         save(shop);
