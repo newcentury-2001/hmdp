@@ -12,16 +12,16 @@ local userId = ARGV[2]
 -- 活动开始/结束时间（毫秒）
 local beginTime = tonumber(ARGV[3])
 local endTime = tonumber(ARGV[4])
+-- 优惠券的状态
 local status = tonumber(ARGV[5])
 -- 订单id与日志TTL（秒）
 local orderId = ARGV[6]
 -- traceId
 local traceId = ARGV[7]
+-- 操作类型
 local logType = ARGV[8]
 local ttlSeconds = tonumber(ARGV[9])
--- 备注：方案A不分片，所有操作在同槽位单键内完成
-
--- 3.脚本业务
+-- 2.脚本业务
 -- 当前时间（毫秒）
 local timeArr = redis.call('TIME')
 local nowMillis = tonumber(timeArr[1]) * 1000 + math.floor(tonumber(timeArr[2]) / 1000)
@@ -65,7 +65,9 @@ redis.call('incrby', stockKey, -changeQty)
 redis.call('sadd', seckillUserKey, userId)
 -- 3.6.记录扣减日志
 local timeArr2 = redis.call('TIME')
+-- 时间戳
 local logNowMillis = tonumber(timeArr2[1]) * 1000 + math.floor(tonumber(timeArr2[2]) / 1000)
+-- 扣减日志的信息
 local logEntry = cjson.encode({
   logType = logType,
   ts = logNowMillis,
@@ -77,8 +79,10 @@ local logEntry = cjson.encode({
   changeQty = changeQty,
   afterQty = afterQty
 })
+-- 设置扣减信息，使用hash类型，key：链路id，方便和数据库中的记录关联。value：信息
 redis.call('hset', traceLogKey, traceId, logEntry)
 if ttlSeconds and ttlSeconds > 0 then
   redis.call('expire', traceLogKey, ttlSeconds)
 end
+-- 返回信息，包括code码、扣减前数量，扣减数量，扣减后数量
 return string.format('{"%s": %d, "%s": %s, "%s": %s, "%s": %s}', 'code', 0, 'beforeQty', beforeQty, 'deductQty', changeQty, 'afterQty', afterQty)

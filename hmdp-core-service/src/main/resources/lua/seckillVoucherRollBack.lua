@@ -9,18 +9,16 @@ local traceLogKey = KEYS[3]
 local voucherId = ARGV[1]
 -- 用户id
 local userId = (ARGV[2])
--- 订单id（回滚脚本不使用，但保留以兼容消息）
+-- 订单id
 local orderId = ARGV[3]
--- 操作码（字符串入参，需要转为数字比较）
+-- 操作码
 local seckillVoucherOrderOperate = tonumber(ARGV[4])
 local traceId = ARGV[5]
 local logType = ARGV[6]
 local beforeQty = tonumber(ARGV[7])
 local changeQty = tonumber(ARGV[8])
 local afterQty = tonumber(ARGV[9])
--- 备注：方案A不分片，所有操作在同槽位单键内完成
-
--- 3.脚本业务
+-- 2.脚本业务
 local stock = redis.call('get', stockKey);
 -- 缓存中的秒杀券库存为空，则直接返回
 if not stock then
@@ -38,6 +36,7 @@ end
 -- 记录回滚日志
 local timeArr = redis.call('TIME')
 local nowMillis = tonumber(timeArr[1]) * 1000 + math.floor(tonumber(timeArr[2]) / 1000)
+-- 构建回滚日志信息
 local logEntry = cjson.encode({
     logType = logType,
     ts = nowMillis,
@@ -49,5 +48,6 @@ local logEntry = cjson.encode({
     changeQty = changeQty,
     afterQty = afterQty
 })
+-- 向Redis存放回滚日志
 redis.call('hset', traceLogKey, traceId, logEntry)
 return 0

@@ -43,6 +43,10 @@ public class VoucherReconcileLogServiceImpl extends ServiceImpl<VoucherReconcile
         voucherReconcileLogDto.setTraceId(messageBody.getTraceId());
         voucherReconcileLogDto.setLogType(logType);
         voucherReconcileLogDto.setBusinessType(businessType);
+        if (voucherReconcileLogDto.getLogType().equals(LogType.RESTORE.getCode())) {
+            voucherReconcileLogDto.setBeforeQty(messageBody.getAfterQty());
+            voucherReconcileLogDto.setAfterQty(messageBody.getBeforeQty());
+        }
         return saveReconcileLog(voucherReconcileLogDto);
     }
     
@@ -67,10 +71,6 @@ public class VoucherReconcileLogServiceImpl extends ServiceImpl<VoucherReconcile
                 .setBeforeQty(voucherReconcileLogDto.getBeforeQty())
                 .setChangeQty(voucherReconcileLogDto.getChangeQty())
                 .setAfterQty(voucherReconcileLogDto.getAfterQty());
-        if (voucherReconcileLogDto.getLogType().equals(LogType.RESTORE.getCode())) {
-            logEntity.setBeforeQty(voucherReconcileLogDto.getAfterQty());
-            logEntity.setAfterQty(voucherReconcileLogDto.getBeforeQty());
-        }
         return save(logEntity);
     }
 }

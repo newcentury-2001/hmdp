@@ -21,7 +21,7 @@ public class SeckillAccessTokenOperate {
     public SeckillAccessTokenOperate(RedisCache redisCache) {
         this.redisCache = redisCache;
         this.script = new DefaultRedisScript<>();
-        this.script.setScriptSource(new ResourceScriptSource(new ClassPathResource("seckill_access_token.lua")));
+        this.script.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/seckill_access_token.lua")));
         this.script.setResultType(Long.class);
     }
 

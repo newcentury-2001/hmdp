@@ -163,12 +163,7 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
     protected Boolean beforeConsume(MessageExtend<SeckillVoucherMessage> message) {
         long producerTimeTimestamp = message.getProducerTime().getTime();
         long delayTime = System.currentTimeMillis() - producerTimeTimestamp;
-        try {
-            //延长点时间，用来方便展示前端等待效果
-            Thread.sleep(3000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        //如果消息超时时间达到了阈值（10秒）
         if (delayTime > MESSAGE_DELAY_TIME){
             log.info("消费到kafka的创建优惠券消息延迟时间大于了 {} 毫秒 此订单消息被丢弃 订单号 : {}",
                     delayTime,message.getMessageBody().getOrderId());

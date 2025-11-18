@@ -1,18 +1,18 @@
 package org.javaup.service.impl;
 
 import cn.hutool.core.util.IdUtil;
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.javaup.redis.RedisCache;
-import org.javaup.redis.RedisKeyBuild;
 import org.javaup.core.RedisKeyManage;
 import org.javaup.lua.SeckillAccessTokenOperate;
+import org.javaup.redis.RedisCache;
+import org.javaup.redis.RedisKeyBuild;
 import org.javaup.service.ISeckillAccessTokenService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import io.micrometer.core.instrument.MeterRegistry;
 
-import jakarta.annotation.Resource;
-import jakarta.annotation.PostConstruct;
 import java.util.concurrent.TimeUnit;
 
 /**
