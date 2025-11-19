@@ -31,6 +31,7 @@ import org.javaup.mapper.VoucherMapper;
 import org.javaup.redis.RedisCache;
 import org.javaup.redis.RedisKeyBuild;
 import org.javaup.service.ISeckillVoucherService;
+import org.javaup.service.IVoucherOrderService;
 import org.javaup.service.IVoucherService;
 import org.javaup.servicelock.LockType;
 import org.javaup.servicelock.annotion.ServiceLock;
@@ -51,6 +52,7 @@ import java.util.concurrent.TimeUnit;
 import static org.javaup.constant.Constant.BLOOM_FILTER_HANDLER_VOUCHER;
 import static org.javaup.constant.Constant.DELAY_VOUCHER_REMINDER;
 import static org.javaup.constant.DistributedLockConstants.UPDATE_SECKILL_VOUCHER_LOCK;
+import static org.javaup.service.impl.VoucherOrderServiceImpl.SECKILL_ORDER_EXECUTOR;
 import static org.javaup.utils.RedisConstants.SECKILL_STOCK_KEY;
 
 /**
@@ -79,6 +81,9 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     
     @Resource
     private SeckillVoucherCacheInvalidationPublisher seckillVoucherCacheInvalidationPublisher;
+    
+    @Resource
+    private IVoucherOrderService voucherOrderService;
     
     @Resource
     private DelayQueueContext delayQueueContext;
@@ -241,6 +246,11 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
                 newInitStock,
                 newRedisStock
                 );
+        //如果是增加库存,尝试将资格自动分配给订阅队列中最早的未购用户
+        if (stockUpdateType == StockUpdateType.INCREASE) {
+            SECKILL_ORDER_EXECUTOR.execute(() -> voucherOrderService
+                    .autoIssueVoucherToEarliestSubscriber(seckillVoucher.getVoucherId(),null));
+        }
     }
     
     @Override
@@ -266,13 +276,14 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
                 ttlSeconds = 3600L;
             }
         }
-
+        //检查是否已购买
         boolean purchased = Boolean.TRUE.equals(redisCache.isMemberForSet(
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY, voucherId),
                 userIdStr
         ));
 
         RedisKeyBuild statusKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_SUBSCRIBE_STATUS_TAG_KEY, voucherId);
+        //如已购：直接将订阅状态写为 SUCCESS
         if (purchased) {
             redisCache.putHash(statusKey, userIdStr, SubscribeStatus.SUCCESS.getCode(), ttlSeconds, TimeUnit.SECONDS);
             redisCache.expire(statusKey, ttlSeconds, TimeUnit.SECONDS);

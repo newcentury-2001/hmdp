@@ -147,7 +147,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         SECKILL_SCRIPT.setResultType(Long.class);
     }
 
-    private static final ThreadPoolExecutor SECKILL_ORDER_EXECUTOR =
+    public static final ThreadPoolExecutor SECKILL_ORDER_EXECUTOR =
             new ThreadPoolExecutor(
                     1,
                     1,
@@ -689,7 +689,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
      * - 为避免重复，筛选时排除已购用户与当前取消用户；
      * - 采用范围批量读取前N条并按score最小选取候选，避免由于Set去序导致的顺序丢失。
      */
-    private boolean autoIssueVoucherToEarliestSubscriber(final Long voucherId, final Long excludeUserId) {
+    @Override
+    public boolean autoIssueVoucherToEarliestSubscriber(final Long voucherId, final Long excludeUserId) {
         // 查询券信息，用于校验和TTL计算
         SeckillVoucherFullModel seckillVoucherFullModel = seckillVoucherService.queryByVoucherId(voucherId);
         // 校验券数据完整性（开始/结束时间必须存在）
@@ -722,8 +723,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         RedisKeyBuild subscribeZSetKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_SUBSCRIBE_ZSET_TAG_KEY, voucherId);
         // 已购用户集合 key
         RedisKeyBuild purchasedSetKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY, voucherId);
-        // 待排除的取消用户id字符串
-        String excludeStr = String.valueOf(excludeUserId);
+        
         // 每页仅取一个成员
         final long pageCount = 1L;
         // 从最早的成员开始递增偏移
@@ -758,7 +758,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 continue;
             }
             // 排除本次取消的用户
-            if (Objects.equals(uidStr, excludeStr)) {
+            if (Objects.nonNull(excludeUserId) && Objects.equals(uidStr, String.valueOf(excludeUserId))) {
                 offset++;
                 continue;
             }

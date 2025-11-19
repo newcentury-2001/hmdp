@@ -1,17 +1,15 @@
 -- 滑动窗口限流（支持按 IP 与用户两个维度）
 -- KEYS[1] = IP维度的ZSET（可选）
--- KEYS[2] = 用户维度的ZSET（必选）
--- ARGV[1] = IP窗口毫秒数
--- ARGV[2] = IP最大尝试次数
--- ARGV[3] = 用户窗口毫秒数
--- ARGV[4] = 用户最大尝试次数
-
 local ipKey = KEYS[1]
+-- KEYS[2] = 用户维度的ZSET（必选）
 local userKey = KEYS[2]
-
+-- ARGV[1] = IP窗口毫秒数
 local ipWindowMillis = tonumber(ARGV[1] or '0')
+-- ARGV[2] = IP最大尝试次数
 local ipMaxAttempts = tonumber(ARGV[2] or '0')
+-- ARGV[3] = 用户窗口毫秒数
 local userWindowMillis = tonumber(ARGV[3] or '0')
+-- ARGV[4] = 用户最大尝试次数
 local userMaxAttempts = tonumber(ARGV[4] or '0')
 
 -- 与 Java 中的 BaseCode 保持一致的返回码

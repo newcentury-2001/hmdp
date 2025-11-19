@@ -26,5 +26,7 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
     
     Boolean cancel(CancelVoucherOrderDto cancelVoucherOrderDto);
     
+    boolean autoIssueVoucherToEarliestSubscriber(final Long voucherId, final Long excludeUserId);
+    
     Long getSeckillVoucherOrderIdByVoucherId(GetVoucherOrderByVoucherIdDto getVoucherOrderByVoucherIdDto);
 }
