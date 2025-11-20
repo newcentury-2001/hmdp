@@ -60,76 +60,95 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
     @Resource
     private IVoucherService voucherService;
     
-    
-    @ServiceLock(lockType= LockType.Read,name = UPDATE_SECKILL_VOUCHER_LOCK,keys = {"#voucherId"})
+    //TODO
     @Override
+    @ServiceLock(lockType= LockType.Read,name = UPDATE_SECKILL_VOUCHER_LOCK,keys = {"#voucherId"})
     public SeckillVoucherFullModel queryByVoucherId(Long voucherId) {
-        SeckillVoucherFullModel localCacheHit = seckillVoucherLocalCache.get(voucherId);
+        RedisKeyBuild seckillVoucherRedisKey =
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId);
+        RedisKeyBuild seckillVoucherNullRedisKey =
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId);
+        // 先查本地缓存，命中则直接返回
+        SeckillVoucherFullModel localCacheHit = seckillVoucherLocalCache.get(seckillVoucherRedisKey.getRelKey());
         if (Objects.nonNull(localCacheHit)) {
             return localCacheHit;
         }
+        // 双重检测解决缓存击穿
         SeckillVoucherFullModel seckillVoucherFullModel =
-                redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId), 
-                        SeckillVoucherFullModel.class);
+                redisCache.get(seckillVoucherRedisKey, SeckillVoucherFullModel.class);
+        // 如果缓存中存在就直接返回
         if (Objects.nonNull(seckillVoucherFullModel)) {
-            seckillVoucherLocalCache.put(voucherId, seckillVoucherFullModel);
+            // 写入本地缓存，加快后续访问
+            seckillVoucherLocalCache.put(seckillVoucherRedisKey.getRelKey(), seckillVoucherFullModel);
             return seckillVoucherFullModel;
         }
         log.info("查询秒杀优惠券 从Redis缓存没有查询到 秒杀优惠券的优惠券id : {}",voucherId);
+        // 通过布隆过滤器判断是否存在
         if (!bloomFilterHandlerFactory.get(BLOOM_FILTER_HANDLER_VOUCHER).contains(String.valueOf(voucherId))) {
             log.info("查询秒杀优惠券 布隆过滤器判断不存在 秒杀优惠券id : {}",voucherId);
             throw new RuntimeException("查询秒杀优惠券不存在");
         }
-        Boolean existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId));
+        // 解决缓存穿透，从缓存中判断是否存在优惠券空值信息，如果有，代表优惠券不存在，直接返回
+        Boolean existResult = redisCache.hasKey(seckillVoucherNullRedisKey);
         if (existResult){
             throw new RuntimeException("查询秒杀优惠券不存在");
         }
+        // 实现双重检测
+        // 加锁，解决缓存击穿
         RLock lock = serviceLockTool.getLock(LockType.Reentrant, LOCK_SECKILL_VOUCHER_KEY, new String[]{String.valueOf(voucherId)});
         lock.lock();
         try {
-            seckillVoucherFullModel = redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId), 
-                    SeckillVoucherFullModel.class);
+            // 再次从缓存中获取优惠券信息，通过此步骤可以避免大量请求在获取锁后，直接击穿缓存访问数据库
+            seckillVoucherFullModel = redisCache.get(seckillVoucherRedisKey, SeckillVoucherFullModel.class);
+            // 如果缓存中存在就直接返回
             if (Objects.nonNull(seckillVoucherFullModel)) {
-                seckillVoucherLocalCache.put(voucherId, seckillVoucherFullModel);
+                // 写入本地缓存，加快后续访问
+                seckillVoucherLocalCache.put(seckillVoucherRedisKey.getRelKey(), seckillVoucherFullModel);
                 return seckillVoucherFullModel;
             }
-            existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId));
+            // 再次从缓存中判断是否存在优惠券空值信息，如果有，代表优惠券不存在，直接返回
+            existResult = redisCache.hasKey(seckillVoucherNullRedisKey);
             if (existResult){
                 throw new RuntimeException("查询优惠券不存在");
             }
+            // 如果缓存还不存在，查询数据库
             SeckillVoucher seckillVoucher = lambdaQuery().eq(SeckillVoucher::getVoucherId,voucherId).one();
+            // 如果从数据库查询是空的，将空值写入redis
             if (Objects.isNull(seckillVoucher)) {
-                redisCache.set(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId),
+                redisCache.set(seckillVoucherNullRedisKey,
                         "这是一个空值",
                         CACHE_NULL_TTL,
                         TimeUnit.MINUTES);
                 throw new RuntimeException("查询秒杀优惠券不存在");
             }
+            // 如果数据库查询不是空的，将秒杀优惠券信息写入缓存，TTL为距离结束时间的秒数
             long ttlSeconds = Math.max(
                     LocalDateTimeUtil.between(LocalDateTimeUtil.now(), seckillVoucher.getEndTime()).getSeconds(),
                     1L
             );
             Voucher voucher = voucherService.lambdaQuery().eq(Voucher::getId, voucherId).one();
+            // 保存秒杀优惠券详情到Redis中（单槽位Hash Tag键）
             seckillVoucherFullModel = new SeckillVoucherFullModel();
             BeanUtils.copyProperties(seckillVoucher, seckillVoucherFullModel);
             seckillVoucherFullModel.setShopId(voucher.getShopId());
             seckillVoucherFullModel.setStatus(voucher.getStatus());
             seckillVoucherFullModel.setStock(null);
             redisCache.set(
-                    RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId),
+                    seckillVoucherRedisKey,
                     seckillVoucherFullModel,
                     ttlSeconds,
                     TimeUnit.SECONDS
             );
-            seckillVoucherLocalCache.put(voucherId, seckillVoucherFullModel);
+            // 同步写入本地缓存
+            seckillVoucherLocalCache.put(seckillVoucherRedisKey.getRelKey(), seckillVoucherFullModel);
             return seckillVoucherFullModel;
         }finally {
             lock.unlock();
         }
     }
     
-    @ServiceLock(lockType= LockType.Read,name = UPDATE_SECKILL_VOUCHER_STOCK_LOCK,keys = {"#voucherId"})
     @Override
+    @ServiceLock(lockType= LockType.Read,name = UPDATE_SECKILL_VOUCHER_STOCK_LOCK,keys = {"#voucherId"})
     public void loadVoucherStock(Long voucherId){
         // 通过布隆过滤器判断是否存在
         if (!bloomFilterHandlerFactory.get(BLOOM_FILTER_HANDLER_VOUCHER).contains(String.valueOf(voucherId))) {

@@ -4,6 +4,7 @@ package org.javaup.controller;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.javaup.dto.DelayVoucherReminderDto;
+import org.javaup.dto.GetSeckillVoucherDto;
 import org.javaup.dto.Result;
 import org.javaup.dto.SeckillVoucherDto;
 import org.javaup.dto.UpdateSeckillVoucherDto;
@@ -12,6 +13,8 @@ import org.javaup.dto.VoucherDto;
 import org.javaup.dto.VoucherSubscribeBatchDto;
 import org.javaup.dto.VoucherSubscribeDto;
 import org.javaup.entity.Voucher;
+import org.javaup.model.SeckillVoucherFullModel;
+import org.javaup.service.ISeckillVoucherService;
 import org.javaup.service.IVoucherService;
 import org.javaup.vo.GetSubscribeStatusVo;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,13 +38,26 @@ public class VoucherController {
 
     @Resource
     private IVoucherService voucherService;
+    
+    @Resource
+    private ISeckillVoucherService seckillVoucherService;
+    
+    /**
+     * 查询秒杀券
+     * @param getSeckillVoucherDto 优惠券id信息
+     * @return 优惠券id
+     */
+    @PostMapping("/get")
+    public Result<SeckillVoucherFullModel> get(@Valid @RequestBody GetSeckillVoucherDto getSeckillVoucherDto) {
+        return Result.ok(seckillVoucherService.queryByVoucherId(getSeckillVoucherDto.getVoucherId()));
+    }
 
     /**
      * 新增秒杀券
      * @param seckillVoucherDto 优惠券信息，包含秒杀信息
      * @return 优惠券id
      */
-    @PostMapping("seckill")
+    @PostMapping("/seckill")
     public Result<Long> addSeckillVoucher(@Valid @RequestBody SeckillVoucherDto seckillVoucherDto) {
         final Long voucherId = voucherService.addSeckillVoucher(seckillVoucherDto);
         return Result.ok(voucherId);
@@ -52,7 +68,7 @@ public class VoucherController {
      * @param updateSeckillVoucherDto 修改的秒杀优惠券信息
      * @return 优惠券id
      */
-    @PostMapping("update/seckill")
+    @PostMapping("/update/seckill")
     public Result<Void> updateSeckillVoucher(@Valid @RequestBody UpdateSeckillVoucherDto updateSeckillVoucherDto) {
         voucherService.updateSeckillVoucher(updateSeckillVoucherDto);
         return Result.ok();
@@ -63,7 +79,7 @@ public class VoucherController {
      * @param updateSeckillVoucherDto 修改的秒杀优惠券信息
      * @return 优惠券id
      */
-    @PostMapping("update/seckill/stock")
+    @PostMapping("/update/seckill/stock")
     public Result<Void> updateSeckillVoucherStock(@Valid @RequestBody UpdateSeckillVoucherStockDto updateSeckillVoucherDto) {
         voucherService.updateSeckillVoucherStock(updateSeckillVoucherDto);
         return Result.ok();

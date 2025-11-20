@@ -33,7 +33,9 @@ public class SeckillVoucherCacheInvalidationPublisher {
      */
     public void publishInvalidate(Long voucherId, String reason) {
         // 1) 当前实例先清理，缩短不一致窗口
-        seckillVoucherLocalCache.invalidate(voucherId);
+        RedisKeyBuild seckillVoucherRedisKey =
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId);
+        seckillVoucherLocalCache.invalidate(seckillVoucherRedisKey.getRelKey());
         redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId));
         redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId));
         redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId));

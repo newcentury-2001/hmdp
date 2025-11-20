@@ -52,6 +52,7 @@ import java.util.concurrent.TimeUnit;
 import static org.javaup.constant.Constant.BLOOM_FILTER_HANDLER_VOUCHER;
 import static org.javaup.constant.Constant.DELAY_VOUCHER_REMINDER;
 import static org.javaup.constant.DistributedLockConstants.UPDATE_SECKILL_VOUCHER_LOCK;
+import static org.javaup.constant.DistributedLockConstants.UPDATE_SECKILL_VOUCHER_STOCK_LOCK;
 import static org.javaup.service.impl.VoucherOrderServiceImpl.SECKILL_ORDER_EXECUTOR;
 import static org.javaup.utils.RedisConstants.SECKILL_STOCK_KEY;
 
@@ -196,7 +197,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     }
     
     @Override
-    @ServiceLock(lockType= LockType.Write,name = UPDATE_SECKILL_VOUCHER_LOCK,keys = {"#updateSeckillVoucherDto.voucherId"})
+    @ServiceLock(lockType= LockType.Write,name = UPDATE_SECKILL_VOUCHER_STOCK_LOCK,keys = {"#updateSeckillVoucherDto.voucherId"})
     @Transactional(rollbackFor = Exception.class)
     public void updateSeckillVoucherStock(UpdateSeckillVoucherStockDto updateSeckillVoucherDto) {
         SeckillVoucher seckillVoucher = seckillVoucherService.lambdaQuery()

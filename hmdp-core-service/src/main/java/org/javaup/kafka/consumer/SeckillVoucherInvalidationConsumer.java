@@ -1,5 +1,6 @@
 package org.javaup.kafka.consumer;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.javaup.cache.SeckillVoucherLocalCache;
@@ -9,6 +10,9 @@ import org.javaup.kafka.message.SeckillVoucherInvalidationMessage;
 import org.javaup.message.MessageExtend;
 import org.javaup.redis.RedisCache;
 import org.javaup.redis.RedisKeyBuild;
+import org.javaup.servicelock.LockType;
+import org.javaup.servicelock.annotion.ServiceLock;
+import org.springframework.aop.framework.AopContext;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
@@ -20,6 +24,7 @@ import java.util.Objects;
 
 import static org.javaup.constant.Constant.SECKILL_VOUCHER_CACHE_INVALIDATION_TOPIC;
 import static org.javaup.constant.Constant.SPRING_INJECT_PREFIX_DISTINCTION_NAME;
+import static org.javaup.constant.DistributedLockConstants.UPDATE_SECKILL_VOUCHER_LOCK;
 
 /**
  * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
@@ -37,6 +42,9 @@ public class SeckillVoucherInvalidationConsumer extends AbstractConsumerHandler<
 
     @Resource
     private SeckillVoucherLocalCache seckillVoucherLocalCache;
+    
+    @Resource
+    private MeterRegistry meterRegistry;
 
 
     @Resource
@@ -58,11 +66,11 @@ public class SeckillVoucherInvalidationConsumer extends AbstractConsumerHandler<
                           @Header(name = KafkaHeaders.RECEIVED_KEY, required = false) String key) {
         consumeRaw(value, key, headers);
     }
-
-    @Override
+    
     /**
      * 核心消费：校验载荷 -> 本地缓存失效 -> Redis 幂等删除 -> 记录日志。
      */
+    @Override
     protected void doConsume(MessageExtend<SeckillVoucherInvalidationMessage> message) {
         SeckillVoucherInvalidationMessage body = message.getMessageBody();
         if (Objects.isNull(body.getVoucherId())) {
@@ -70,19 +78,41 @@ public class SeckillVoucherInvalidationConsumer extends AbstractConsumerHandler<
             return;
         }
         Long voucherId = body.getVoucherId();
-
+        
+        ((SeckillVoucherInvalidationConsumer) AopContext.currentProxy()).delCache(voucherId);
+    }
+    
+    @ServiceLock(lockType= LockType.Write,name = UPDATE_SECKILL_VOUCHER_LOCK,keys = {"#voucherId"})
+    public void delCache(Long voucherId){
         // 1) 失效本地缓存
-        seckillVoucherLocalCache.invalidate(voucherId);
-
+        RedisKeyBuild seckillVoucherRedisKey =
+                RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId);
+        seckillVoucherLocalCache.invalidate(seckillVoucherRedisKey.getRelKey());
+        
         // 2) 删除Redis缓存（券详情、库存、空值）——幂等删除
+        redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId));
+        redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId));
+        redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId));
+        
+    }
+    
+    @Override
+    protected void afterConsumeFailure(final MessageExtend<SeckillVoucherInvalidationMessage> message, final Throwable throwable) {
+        super.afterConsumeFailure(message, throwable);
+        log.warn("删除Redis缓存失败 voucherId={}", message.getMessageBody().getVoucherId(), throwable);
+        safeInc(errorTag(throwable));
+    }
+    
+    private void safeInc(String tagValue) {
         try {
-            redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId));
-            redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId));
-            redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId));
-        } catch (Exception e) {
-            log.warn("删除Redis缓存失败 voucherId={}", voucherId, e);
+            if (meterRegistry != null) {
+                meterRegistry.counter("seckill_invalidation_consume_failures", "error", tagValue).increment();
+            }
+        } catch (Exception ignore) {
         }
+    }
 
-        log.info("完成缓存失效：voucherId={}, reason={}", voucherId, body.getReason());
+    private String errorTag(Throwable t) {
+        return t == null ? "unknown" : t.getClass().getSimpleName();
     }
 }

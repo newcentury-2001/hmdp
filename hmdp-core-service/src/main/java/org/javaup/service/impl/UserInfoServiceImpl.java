@@ -33,8 +33,8 @@ public class UserInfoServiceImpl extends ServiceImpl<UserInfoMapper, UserInfo> i
     @Resource
     private RedisCache redisCache;
     
-    @ServiceLock(lockType= LockType.Read,name = UPDATE_USER_INFO_LOCK,keys = {"#userId"})
     @Override
+    @ServiceLock(lockType= LockType.Read,name = UPDATE_USER_INFO_LOCK,keys = {"#userId"})
     public UserInfo getByUserId(Long userId){
         UserInfo userInfo = redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.USER_INFO_KEY, userId), UserInfo.class);
         if (Objects.nonNull(userInfo)){
@@ -47,11 +47,10 @@ public class UserInfoServiceImpl extends ServiceImpl<UserInfoMapper, UserInfo> i
         redisCache.set(RedisKeyBuild.createRedisKey(RedisKeyManage.USER_INFO_KEY, userId), userInfo);
         return userInfo;
     }
-
     
+    @Override
     @ServiceLock(lockType= LockType.Write,name = UPDATE_USER_INFO_LOCK,keys = {"#userId"})
     @Transactional(rollbackFor = Exception.class)
-    @Override
     public Result<Void> updateUserLevel(Long userId, Integer newLevel) {
         if (Objects.isNull(userId) || Objects.isNull(newLevel) || newLevel <= 0) {
             return Result.fail("参数非法：userId/newLevel");

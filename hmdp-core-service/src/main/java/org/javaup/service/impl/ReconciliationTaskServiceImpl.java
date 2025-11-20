@@ -19,6 +19,7 @@ import org.javaup.servicelock.LockType;
 import org.javaup.servicelock.annotion.ServiceLock;
 import org.springframework.stereotype.Service;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -58,14 +59,18 @@ public class ReconciliationTaskServiceImpl implements IReconciliationTaskService
     }
     
     public void reconciliationTaskExecute(Long voucherId){
+        //根据优惠券id查询未对账的订单
         List<VoucherOrder> voucherOrderList = loadPendingOrders(voucherId);
         for (VoucherOrder voucherOrder : voucherOrderList) {
+            //查询此订单数据库中的的记录日志
             List<VoucherReconcileLog> logs = loadReconcileLogs(voucherOrder.getId());
             if (CollectionUtil.isEmpty(logs)) {
-                markOrderStatus(voucherOrder.getId(), ReconciliationStatus.ABNORMAL);
+                //如果记录日志不存在，那么把此订单和订单记录日志的对账状态更新为异常状态
+                ((ReconciliationTaskServiceImpl) AopContext.currentProxy())
+                        .markOrderStatus(voucherOrder.getId(), ReconciliationStatus.ABNORMAL);
                 continue;
             }
-
+            //读取此优惠券下的Redis中的记录日志
             Map<String, RedisTraceLogModel> redisTraceLogMap = loadRedisTraceLogMap(voucherId);
             RedisKeyBuild traceLogKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_TRACE_LOG_TAG_KEY, voucherId);
             long ttlSeconds = resolveTraceTtlSeconds(traceLogKey, voucherId);
@@ -73,20 +78,28 @@ public class ReconciliationTaskServiceImpl implements IReconciliationTaskService
 
             int dbLogCount = logs.size();
             boolean markConsistent = true;
+            //数据库中的记录日志有1条，那么表示此订单只有抢购优惠券
+            //数据库中的记录日志有2条，那么表示此订单先抢购优惠券，然后又取消了
             if (dbLogCount == 1 || dbLogCount == 2) {
+                //anyMissing为true，说明向Redis有发生了补偿记录日志了
                 if (anyMissing) {
+                    //如果发生了向Redis补偿后，将Redis中的库存删除
                     ((IReconciliationTaskService) AopContext.currentProxy()).delRedisStock(voucherId);
                 }
             } else {
-                markOrderStatus(voucherOrder.getId(), ReconciliationStatus.ABNORMAL);
+                //如果数据库中没有记录日志，那么把此订单和订单记录日志的对账状态更新为异常状态
+                ((ReconciliationTaskServiceImpl) AopContext.currentProxy())
+                        .markOrderStatus(voucherOrder.getId(), ReconciliationStatus.ABNORMAL);
                 markConsistent = false;
             }
-
+            //执行到这里说明数据库中的记录日志和Redis中的记录日志是一致的，那么把此订单和订单记录日志的对账状态更新为一致状态
             if (markConsistent) {
-                markOrderStatus(voucherOrder.getId(), ReconciliationStatus.CONSISTENT);
+                ((ReconciliationTaskServiceImpl) AopContext.currentProxy())
+                        .markOrderStatus(voucherOrder.getId(), ReconciliationStatus.CONSISTENT);
             }
         }
     }
+    
     @Override
     @ServiceLock(lockType= LockType.Write,name = UPDATE_SECKILL_VOUCHER_STOCK_LOCK,keys = {"#voucherId"})
     public void delRedisStock(Long voucherId){
@@ -146,6 +159,7 @@ public class ReconciliationTaskServiceImpl implements IReconciliationTaskService
             if (existed != null) {
                 continue;
             }
+            //如果数据库中的记录日志有，Redis中的记录日志没有，需要向Redis中补偿记录日志
             anyMissing = true;
             RedisTraceLogModel model = new RedisTraceLogModel();
             model.setLogType(String.valueOf(log.getLogType()));
@@ -166,10 +180,19 @@ public class ReconciliationTaskServiceImpl implements IReconciliationTaskService
         return anyMissing;
     }
 
-    private void markOrderStatus(Long orderId, ReconciliationStatus status) {
+    @Transactional(rollbackFor = Exception.class)
+    public void markOrderStatus(Long orderId, ReconciliationStatus status) {
+        //更新订单对账状态
         voucherOrderService.lambdaUpdate()
                 .set(VoucherOrder::getReconciliationStatus, status.getCode())
+                .set(VoucherOrder::getUpdateTime, LocalDateTime.now())
                 .eq(VoucherOrder::getId, orderId)
+                .update();
+        //更新订单记录日志对账状态
+        voucherReconcileLogService.lambdaUpdate()
+                .set(VoucherReconcileLog::getReconciliationStatus, status.getCode())
+                .set(VoucherReconcileLog::getUpdateTime, LocalDateTime.now())
+                .eq(VoucherReconcileLog::getOrderId, orderId)
                 .update();
     }
 }
