@@ -34,8 +34,7 @@ public class VoucherOrderDto implements Serializable {
     private Long voucherId;
     
     private String messageId;
-
-    /** 是否由自动发券触发，用于决定是否发送提醒 */
+    
     private Boolean autoIssue;
 
 }

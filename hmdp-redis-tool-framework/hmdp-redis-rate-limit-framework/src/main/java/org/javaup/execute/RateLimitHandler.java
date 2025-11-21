@@ -7,11 +7,6 @@ import org.javaup.ratelimit.extension.RateLimitScene;
  * @author: 阿星不是程序员
  **/
 public interface RateLimitHandler {
-    /**
-     * 执行限流（带场景），便于为不同接口使用不同的窗口与阈值，提供滑动窗口与动态令牌两种
-     * @param voucherId 秒杀券ID
-     * @param userId 用户ID
-     * @param scene 限流场景（发令牌/下单）
-     */
+   
     void execute(Long voucherId, Long userId, RateLimitScene scene);
 }

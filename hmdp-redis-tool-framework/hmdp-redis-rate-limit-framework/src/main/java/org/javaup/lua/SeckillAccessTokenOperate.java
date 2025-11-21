@@ -10,7 +10,7 @@ import java.util.List;
 
 /**
  * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
- * @description: 校验并消费秒杀访问令牌
+ * @description: 校验
  * @author: 阿星不是程序员
  **/
 public class SeckillAccessTokenOperate {
@@ -24,13 +24,7 @@ public class SeckillAccessTokenOperate {
         this.script.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/seckill_access_token.lua")));
         this.script.setResultType(Long.class);
     }
-
-    /**
-     * 校验并删除令牌
-     * @param key redis键
-     * @param expected 期望令牌值
-     * @return true 表示成功匹配并删除
-     */
+    
     public boolean validateAndConsume(String key, String expected) {
         List<String> keys = Collections.singletonList(key);
         Long ret = (Long)redisCache.getInstance().execute(script, keys, expected);

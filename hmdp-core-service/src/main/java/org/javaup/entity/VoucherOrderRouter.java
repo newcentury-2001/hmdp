@@ -21,36 +21,18 @@ import java.time.LocalDateTime;
 public class VoucherOrderRouter implements Serializable {
 
     private static final long serialVersionUID = 1L;
-
-    /**
-     * 主键
-     */
+    
     @TableId(value = "id")
     private Long id;
-    
-    /**
-     * 订单id
-     */
-    private Long orderId;
 
-    /**
-     * 用户id
-     */
+    private Long orderId;
+    
     private Long userId;
 
-    /**
-     * 代金券id
-     */
     private Long voucherId;
-
-    /**
-     * 创建时间
-     */
+    
     private LocalDateTime createTime;
-
-    /**
-     * 更新时间
-     */
+    
     private LocalDateTime updateTime;
 
 

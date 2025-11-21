@@ -40,7 +40,6 @@ public class SeckillAccessTokenServiceImpl implements ISeckillAccessTokenService
 
     @PostConstruct
     public void init() {
-        // 使用 Lua 脚本实现令牌校验与原子消费
         operate = new SeckillAccessTokenOperate(redisCache);
     }
 

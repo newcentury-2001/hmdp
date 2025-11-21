@@ -15,10 +15,7 @@ import java.util.Map;
 public class BloomFilterProperties {
 
     public static final String PREFIX = "bloom-filter";
-
-    /**
-     * 多业务布隆过滤器配置：key 为业务别名，例如 shop、coupon
-     * */
+    
     private Map<String, Filter> filters;
 
     @Data

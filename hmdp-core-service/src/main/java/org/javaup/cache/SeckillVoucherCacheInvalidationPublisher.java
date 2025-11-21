@@ -27,12 +27,8 @@ public class SeckillVoucherCacheInvalidationPublisher {
     
     @Resource
     private SeckillVoucherLocalCache seckillVoucherLocalCache;
-
-    /**
-     * 触发指定券的缓存失效广播，并在当前实例立即清理
-     */
+    
     public void publishInvalidate(Long voucherId, String reason) {
-        // 1) 当前实例先清理，缩短不一致窗口
         RedisKeyBuild seckillVoucherRedisKey =
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId);
         seckillVoucherLocalCache.invalidate(seckillVoucherRedisKey.getRelKey());
@@ -40,7 +36,6 @@ public class SeckillVoucherCacheInvalidationPublisher {
         redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId));
         redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId));
         
-        // 2) 广播Kafka消息到所有实例
         SeckillVoucherInvalidationMessage payload = new SeckillVoucherInvalidationMessage(voucherId, reason);
         invalidationProducer.sendPayload(
                 SpringUtil.getPrefixDistinctionName() + "-" + SECKILL_VOUCHER_CACHE_INVALIDATION_TOPIC,

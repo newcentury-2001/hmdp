@@ -15,10 +15,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 public class DelayedVoucherReminderMessage {
-
-    /** 秒杀券ID */
+    
     private Long voucherId;
-
-    /** 开始时间，用于记录与提示 */
+    
     private LocalDateTime beginTime;
 }

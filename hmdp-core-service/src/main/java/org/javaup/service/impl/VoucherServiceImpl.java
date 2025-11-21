@@ -118,9 +118,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long addSeckillVoucher(SeckillVoucherDto seckillVoucherDto) {
-        //黑马点评v1版本
         //return doAddSeckillVoucherV1(seckillVoucherDto);
-        //黑马点评v2版本
         return doAddSeckillVoucherV2(seckillVoucherDto);
     }
     
@@ -129,7 +127,6 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     @Transactional(rollbackFor = Exception.class)
     public void updateSeckillVoucher(UpdateSeckillVoucherDto updateSeckillVoucherDto) {
         Long voucherId = updateSeckillVoucherDto.getVoucherId();
-        // 更新 tb_voucher 表的非空字段
         boolean updatedVoucher = false;
         var voucherUpdate = this.lambdaUpdate().eq(Voucher::getId, voucherId);
         if (updateSeckillVoucherDto.getTitle() != null) {
@@ -163,8 +160,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         if (updatedVoucher) {
             voucherUpdate.set(Voucher::getUpdateTime, LocalDateTimeUtil.now()).update();
         }
-
-        // 更新 tb_seckill_voucher 表的非空字段（仅时间相关）
+        
         boolean updatedSeckill = false;
         var seckillUpdate = seckillVoucherService.lambdaUpdate().eq(SeckillVoucher::getVoucherId, voucherId);
         if (updateSeckillVoucherDto.getBeginTime() != null) {
@@ -175,7 +171,6 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
             seckillUpdate.set(SeckillVoucher::getEndTime, updateSeckillVoucherDto.getEndTime());
             updatedSeckill = true;
         }
-        // 受众规则字段更新
         if (updateSeckillVoucherDto.getAllowedLevels() != null) {
             seckillUpdate.set(SeckillVoucher::getAllowedLevels, updateSeckillVoucherDto.getAllowedLevels());
             updatedSeckill = true;
@@ -187,8 +182,6 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         if (updatedSeckill) {
             seckillUpdate.set(SeckillVoucher::getUpdateTime, LocalDateTimeUtil.now()).update();
         }
-
-        // 更新后清理缓存，等待读路径按新数据重建缓存
         if (updatedVoucher || updatedSeckill) {
             voucherUpdate.update();
             seckillUpdate.update();
@@ -247,7 +240,6 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
                 newInitStock,
                 newRedisStock
                 );
-        //如果是增加库存,尝试将资格自动分配给订阅队列中最早的未购用户
         if (stockUpdateType == StockUpdateType.INCREASE) {
             SECKILL_ORDER_EXECUTOR.execute(() -> voucherOrderService
                     .autoIssueVoucherToEarliestSubscriber(seckillVoucher.getVoucherId(),null));
@@ -277,35 +269,29 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
                 ttlSeconds = 3600L;
             }
         }
-        //检查是否已购买
         boolean purchased = Boolean.TRUE.equals(redisCache.isMemberForSet(
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY, voucherId),
                 userIdStr
         ));
 
         RedisKeyBuild statusKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_SUBSCRIBE_STATUS_TAG_KEY, voucherId);
-        //如已购：直接将订阅状态写为 SUCCESS
         if (purchased) {
             redisCache.putHash(statusKey, userIdStr, SubscribeStatus.SUCCESS.getCode(), ttlSeconds, TimeUnit.SECONDS);
             redisCache.expire(statusKey, ttlSeconds, TimeUnit.SECONDS);
             return;
         }
-
-        // 加入订阅集合（SET），幂等
+        
         RedisKeyBuild setKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_SUBSCRIBE_USER_TAG_KEY, voucherId);
         Long added = redisCache.addForSet(setKey, userIdStr);
         redisCache.expire(setKey, ttlSeconds, TimeUnit.SECONDS);
-
-        // 加入订阅队列（ZSET），仅首次加入时写入顺序分数
+        
         RedisKeyBuild zsetKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_SUBSCRIBE_ZSET_TAG_KEY, voucherId);
         if (Objects.nonNull(added) && added > 0) {
             redisCache.addForSortedSet(zsetKey, userIdStr, (double) System.currentTimeMillis(), ttlSeconds, TimeUnit.SECONDS);
         } else {
-            // 已存在则仅对齐TTL
             redisCache.expire(zsetKey, ttlSeconds, TimeUnit.SECONDS);
         }
-
-        // 更新订阅状态为 SUBSCRIBED（如已是 SUCCESS 则不降级）
+        
         Integer prev = redisCache.getForHash(statusKey, userIdStr, Integer.class);
         if (!SubscribeStatus.SUCCESS.getCode().equals(prev)) {
             redisCache.putHash(statusKey, userIdStr, SubscribeStatus.SUBSCRIBED.getCode(), ttlSeconds, TimeUnit.SECONDS);
@@ -322,12 +308,10 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         RedisKeyBuild setKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_SUBSCRIBE_USER_TAG_KEY, voucherId);
         RedisKeyBuild zsetKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_SUBSCRIBE_ZSET_TAG_KEY, voucherId);
         RedisKeyBuild statusKey = RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_SUBSCRIBE_STATUS_TAG_KEY, voucherId);
-
-        // 从订阅集合与队列移除
+        
         redisCache.removeForSet(setKey, userIdStr);
         redisCache.delForSortedSet(zsetKey, userIdStr);
-
-        // 已购则维持 SUCCESS，否则置为 UNSUBSCRIBED
+        
         boolean purchased = Boolean.TRUE.equals(redisCache.isMemberForSet(
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY, voucherId),
                 userIdStr
@@ -358,8 +342,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         if (st != null) {
             return st;
         }
-
-        // 先判断是否已购
+        
         boolean purchased = Boolean.TRUE.equals(redisCache.isMemberForSet(
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY, voucherId),
                 userIdStr
@@ -376,8 +359,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
             redisCache.expire(statusKey, ttlSeconds, TimeUnit.SECONDS);
             return SubscribeStatus.SUCCESS.getCode();
         }
-
-        // 判断是否在订阅集合
+        
         boolean inQueue = Boolean.TRUE.equals(redisCache.isMemberForSet(
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_SUBSCRIBE_USER_TAG_KEY, voucherId),
                 userIdStr
@@ -425,11 +407,9 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     }
     
     public Long doAddSeckillVoucherV1(SeckillVoucherDto seckillVoucherDto) {
-        // 保存优惠券
         VoucherDto voucherDto = new VoucherDto();
         BeanUtil.copyProperties(seckillVoucherDto, voucherDto);
         Long voucherId = addVoucher(voucherDto);
-        // 保存秒杀信息
         SeckillVoucher seckillVoucher = new SeckillVoucher();
         seckillVoucher.setId(snowflakeIdGenerator.nextId());
         seckillVoucher.setVoucherId(voucherId);
@@ -437,9 +417,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         seckillVoucher.setBeginTime(seckillVoucherDto.getBeginTime());
         seckillVoucher.setEndTime(seckillVoucherDto.getEndTime());
         seckillVoucherService.save(seckillVoucher);
-        // 保存秒杀库存到Redis中
         stringRedisTemplate.opsForValue().set(SECKILL_STOCK_KEY + voucherId, seckillVoucher.getStock().toString());
-        // 如果数据库查询不是空的，将秒杀优惠券信息写入缓存，TTL为距离结束时间的秒数
         long ttlSeconds = Math.max(
                 LocalDateTimeUtil.between(LocalDateTimeUtil.now(), seckillVoucher.getEndTime()).getSeconds(),
                 1L
@@ -455,11 +433,9 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     }
     
     public Long doAddSeckillVoucherV2(SeckillVoucherDto seckillVoucherDto) {
-        // 保存优惠券
         VoucherDto voucherDto = new VoucherDto();
         BeanUtil.copyProperties(seckillVoucherDto, voucherDto);
         Long voucherId = addVoucher(voucherDto);
-        // 保存秒杀信息
         SeckillVoucher seckillVoucher = new SeckillVoucher();
         seckillVoucher.setId(snowflakeIdGenerator.nextId());
         seckillVoucher.setVoucherId(voucherId);
@@ -467,23 +443,19 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         seckillVoucher.setStock(seckillVoucherDto.getStock());
         seckillVoucher.setBeginTime(seckillVoucherDto.getBeginTime());
         seckillVoucher.setEndTime(seckillVoucherDto.getEndTime());
-        // 受众规则字段
         seckillVoucher.setAllowedLevels(seckillVoucherDto.getAllowedLevels());
         seckillVoucher.setMinLevel(seckillVoucherDto.getMinLevel());
         seckillVoucherService.save(seckillVoucher);
-        // 如果数据库查询不是空的，将秒杀优惠券信息写入缓存，TTL为距离结束时间的秒数
         long ttlSeconds = Math.max(
                 LocalDateTimeUtil.between(LocalDateTimeUtil.now(), seckillVoucher.getEndTime()).getSeconds(),
                 1L
         );
-        // 保存秒杀优惠券库存到Redis中（单槽位Hash Tag键）
         redisCache.set(
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId),
                 String.valueOf(seckillVoucher.getStock()),
                 ttlSeconds,
                 TimeUnit.SECONDS
         );
-        // 保存秒杀优惠券详情到Redis中（单槽位Hash Tag键）
         seckillVoucher.setStock(null);
         redisCache.set(
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId),
@@ -491,7 +463,6 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
                 ttlSeconds,
                 TimeUnit.SECONDS
         );
-        // 延迟提醒
         sendDelayedVoucherReminder(seckillVoucher);
         return voucherId;
     }
@@ -512,8 +483,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
                     seckillVoucher.getVoucherId(), beginTime, delaySeconds);
             return;
         }
-
-        // 构建提醒消息内容（JSON字符串）
+        
         DelayedVoucherReminderMessage msg = new DelayedVoucherReminderMessage(
                 seckillVoucher.getVoucherId(),
                 beginTime
@@ -532,7 +502,6 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         if (Objects.isNull(seckillVoucher)) {
             throw new HmdpFrameException(BaseCode.SECKILL_VOUCHER_NOT_EXIST);
         }
-        // 构建提醒消息内容（JSON字符串）
         DelayedVoucherReminderMessage msg = new DelayedVoucherReminderMessage(
                 seckillVoucher.getVoucherId(),
                 seckillVoucher.getBeginTime()

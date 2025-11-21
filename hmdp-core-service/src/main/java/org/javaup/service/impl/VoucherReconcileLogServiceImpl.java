@@ -50,9 +50,6 @@ public class VoucherReconcileLogServiceImpl extends ServiceImpl<VoucherReconcile
         return saveReconcileLog(voucherReconcileLogDto);
     }
     
-    /**
-     * 构建并保存对账日志：根据日志类型设置数量字段，记录业务过程数据。
-     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean saveReconcileLog(VoucherReconcileLogDto voucherReconcileLogDto) {

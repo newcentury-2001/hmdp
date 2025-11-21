@@ -55,44 +55,23 @@ import static org.javaup.constant.Constant.SPRING_INJECT_PREFIX_DISTINCTION_NAME
 @Component
 public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVoucherMessage> {
     
-    /**
-     * 消息延迟阈值（毫秒），超过阈值则丢弃并回滚
-     * */
     public static Long MESSAGE_DELAY_TIME = 10000L;
     
-    /**
-     * 订单服务：负责创建秒杀订单
-     * */
     @Resource
     private IVoucherOrderService voucherOrderService;
     
-    /**
-     * Redis 回滚封装组件：包含 Lua 调用、指数退避重试与失败日志
-     * */
     @Resource
     private RedisVoucherData redisVoucherData;
-
-    /**
-     * Redis缓存：用于统计店铺每日Top买家
-     */
+    
     @Resource
     private RedisCache redisCache;
-
-    /**
-     * 秒杀券服务：查询券详情以获取shopId
-     */
+    
     @Resource
     private ISeckillVoucherService seckillVoucherService;
     
-    /**
-     * 对账日志服务：记录消费成功/失败等业务一致性日志
-     * */
     @Resource
     private IVoucherReconcileLogService voucherReconcileLogService;
-    
-    /**
-     * 雪花算法：生成贯穿回滚/日志的 traceId
-     * */
+     
     @Resource
     private SnowflakeIdGenerator snowflakeIdGenerator;
     
@@ -142,9 +121,7 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
         super(SeckillVoucherMessage.class);
     }
     
-    /**
-     * Kafka 消息入口：委托框架转换并进入统一消费流程。
-     */
+   
     @KafkaListener(
             topics = {SPRING_INJECT_PREFIX_DISTINCTION_NAME + "-" + SECKILL_VOUCHER_TOPIC}
     )
@@ -154,11 +131,6 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
         consumeRaw(value, key, headers);
     }
     
-   
-    /**
-     * 消费前置过滤：若消息延迟超过阈值则丢弃并回滚，同时记录对账日志。
-     * 返回 true 继续消费；返回 false 中断后续消费流程。
-     */
     @Override
     protected Boolean beforeConsume(MessageExtend<SeckillVoucherMessage> message) {
         long producerTimeTimestamp = message.getProducerTime().getTime();
@@ -179,7 +151,6 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
                     message.getMessageBody().getChangeQty(),
                     message.getMessageBody().getBeforeQty()
             );
-            // 对账日志：异常-消息延迟丢弃
             try {
                 voucherReconcileLogService.saveReconcileLog(LogType.RESTORE.getCode(), 
                         BusinessType.TIMEOUT.getCode(), 
@@ -193,18 +164,11 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
         return true;
     }
     
-    
-    /**
-     * 核心消费：尝试创建订单，若出现幂等冲突(DuplicateKeyException)则执行回滚。
-     */
     @Override
     protected void doConsume(MessageExtend<SeckillVoucherMessage> message) {
         voucherOrderService.createVoucherOrderV2(message);
     }
     
-    /**
-     * 成功后处理：统计用户购买
-     */
     @Override
     protected void afterConsumeSuccess(MessageExtend<SeckillVoucherMessage> message) {
         super.afterConsumeSuccess(message);
@@ -212,9 +176,7 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
         Long userId = messageBody.getUserId();
         Long voucherId = messageBody.getVoucherId();
         Long orderId = messageBody.getOrderId();
-        // 使用线程池异步执行后续清理与通知逻辑
         SECKILL_ORDER_CONSUME_TASK_EXECUTOR.execute(() -> {
-            // 订单创建成功后，清理该用户在订阅ZSET中的排队位置（避免后续重复分配）
             try {
                 RedisKeyBuild subscribeZSetKey = RedisKeyBuild.createRedisKey(
                         RedisKeyManage.SECKILL_SUBSCRIBE_ZSET_TAG_KEY,
@@ -224,7 +186,6 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
             } catch (Exception e) {
                 log.warn("清理订阅ZSET成员失败，voucherId={}, userId={}, err={}", messageBody.getVoucherId(), userId, e.getMessage());
             }
-            // 自动发券场景：发送用户通知（短信/APP）并做去重
             if (Boolean.TRUE.equals(messageBody.getAutoIssue())) {
                 try {
                     autoIssueNotifyService.sendAutoIssueNotify(voucherId, userId, orderId);
@@ -234,7 +195,6 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
                 }
             }
             try {
-                // 统计“店铺每日Top买家”：将用户加入对应店铺当日ZSET并自增分数
                 SeckillVoucherFullModel voucherFull = seckillVoucherService.queryByVoucherId(voucherId);
                 if (Objects.isNull(voucherFull)) {
                     return;
@@ -247,9 +207,7 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
                         shopId,
                         day
                 );
-                // 自增当日购买次数
                 redisCache.incrementScoreForSortedSet(dailyKey, String.valueOf(userId), 1.0);
-                // 若首次写入或无TTL，则设置保留时长（默认保留90天）
                 Long ttl = redisCache.getExpire(dailyKey, TimeUnit.SECONDS);
                 if (ttl == null || ttl < 0) {
                     redisCache.expire(dailyKey, 90, TimeUnit.DAYS);
@@ -260,9 +218,6 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
         });
     }
     
-    /**
-     * 失败后处理：消费异常时回滚 Redis 并记录对账日志（异常）。
-     */
     @Override
     protected void afterConsumeFailure(final MessageExtend<SeckillVoucherMessage> message, 
                                        final Throwable throwable) {
@@ -281,12 +236,10 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
                 message.getMessageBody().getVoucherId(),
                 message.getMessageBody().getUserId(),
                 message.getMessageBody().getOrderId(),
-                // 这是回滚操作，所以redis中扣减前和扣减后的数量要和消息中的反过来
                 message.getMessageBody().getAfterQty(),
                 message.getMessageBody().getChangeQty(),
                 message.getMessageBody().getBeforeQty()
         );
-        // 对账日志：异常-消费失败
         try {
             String detail = throwable == null ? "consume failed" : ("consume failed: " + throwable.getMessage());
             voucherReconcileLogService.saveReconcileLog(LogType.RESTORE.getCode(),

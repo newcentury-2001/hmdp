@@ -28,11 +28,7 @@ import static org.javaup.constant.DistributedLockConstants.UPDATE_SECKILL_VOUCHE
 
 /**
  * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
- * @description: Kafka 消费者：接收“秒杀券缓存失效”广播并执行本地/Redis缓存清理。
- * 负责：
- * 1) 失效本地缓存，缩短不一致窗口；
- * 2) 幂等删除 Redis 的券详情、库存、空值键；
- * 3) 记录结构化日志，异常场景打印警告。
+ * @description: Kafka 消费者：接收“秒杀券缓存失效”广播
  * @author: 阿星不是程序员
  **/
 @Slf4j
@@ -53,10 +49,7 @@ public class SeckillVoucherInvalidationConsumer extends AbstractConsumerHandler<
     public SeckillVoucherInvalidationConsumer() {
         super(SeckillVoucherInvalidationMessage.class);
     }
-
-    /**
-     * Kafka 消息入口：转交统一消费流程。
-     */
+    
     @KafkaListener(
             topics = {SPRING_INJECT_PREFIX_DISTINCTION_NAME + "-" + SECKILL_VOUCHER_CACHE_INVALIDATION_TOPIC},
             groupId = "${prefix.distinction.name:hmdp}-seckill_voucher_cache_invalidation-${random.uuid}"
@@ -67,9 +60,6 @@ public class SeckillVoucherInvalidationConsumer extends AbstractConsumerHandler<
         consumeRaw(value, key, headers);
     }
     
-    /**
-     * 核心消费：校验载荷 -> 本地缓存失效 -> Redis 幂等删除 -> 记录日志。
-     */
     @Override
     protected void doConsume(MessageExtend<SeckillVoucherInvalidationMessage> message) {
         SeckillVoucherInvalidationMessage body = message.getMessageBody();
@@ -84,12 +74,10 @@ public class SeckillVoucherInvalidationConsumer extends AbstractConsumerHandler<
     
     @ServiceLock(lockType= LockType.Write,name = UPDATE_SECKILL_VOUCHER_LOCK,keys = {"#voucherId"})
     public void delCache(Long voucherId){
-        // 1) 失效本地缓存
         RedisKeyBuild seckillVoucherRedisKey =
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId);
         seckillVoucherLocalCache.invalidate(seckillVoucherRedisKey.getRelKey());
         
-        // 2) 删除Redis缓存（券详情、库存、空值）——幂等删除
         redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId));
         redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId));
         redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId));

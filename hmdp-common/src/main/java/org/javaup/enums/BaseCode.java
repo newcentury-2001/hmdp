@@ -1,5 +1,7 @@
 package org.javaup.enums;
 
+import lombok.Getter;
+
 /**
  * @program: 黑马点评-plus升级版实战项目。 添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: 接口返回code码
@@ -44,6 +46,7 @@ public enum BaseCode {
     USER_ALREADY_PURCHASE(20001, "用户已经购买"),
     ;
     
+    @Getter
     private final Integer code;
     
     private String msg = "";
@@ -51,10 +54,6 @@ public enum BaseCode {
     BaseCode(Integer code, String msg) {
         this.code = code;
         this.msg = msg;
-    }
-    
-    public Integer getCode() {
-        return this.code;
     }
     
     public String getMsg() {

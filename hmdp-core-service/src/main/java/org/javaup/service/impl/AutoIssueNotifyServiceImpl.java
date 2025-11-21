@@ -39,7 +39,6 @@ public class AutoIssueNotifyServiceImpl implements IAutoIssueNotifyService {
     @Override
     public void sendAutoIssueNotify(Long voucherId, Long userId, Long orderId) {
         try {
-            // 通知去重：同voucherId+userId在窗口期内仅提醒一次
             if (!shouldNotify(voucherId, userId)) {
                 return;
             }
@@ -48,7 +47,6 @@ public class AutoIssueNotifyServiceImpl implements IAutoIssueNotifyService {
                 log.info("[AUTOISSUE_SMS] to={} content={}", smsTo, content);
             }
             if (appEnabled) {
-                // 此处保留扩展点：集成APP站内信/Push
                 log.info("[AUTOISSUE_APP] userId={} content={}", userId, content);
             }
         } catch (Exception e) {
@@ -65,7 +63,6 @@ public class AutoIssueNotifyServiceImpl implements IAutoIssueNotifyService {
                     TimeUnit.SECONDS
             );
         } catch (Exception e) {
-            // Redis异常不阻断通知
             return true;
         }
     }

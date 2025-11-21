@@ -12,9 +12,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
- * @description: 基于阈值的临时封禁策略：
- *   - 在统计窗口内累计被阻断次数达到阈值，则设置封禁标记并指定TTL
- *   - 分IP与用户两个维度
+ * @description: 基于阈值的临时封禁
  * @author: 阿星不是程序员
  **/
 @Slf4j

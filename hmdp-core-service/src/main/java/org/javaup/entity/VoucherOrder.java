@@ -21,60 +21,28 @@ import java.time.LocalDateTime;
 public class VoucherOrder implements Serializable {
 
     private static final long serialVersionUID = 1L;
-
-    /**
-     * 主键
-     */
+    
     @TableId(value = "id")
     private Long id;
-
-    /**
-     * 下单的用户id
-     */
+    
     private Long userId;
-
-    /**
-     * 购买的代金券id
-     */
+    
     private Long voucherId;
-
-    /**
-     * 支付方式 1：余额支付；2：支付宝；3：微信
-     */
+    
     private Integer payType;
-
-    /**
-     * 订单状态，1：正常；2：已取消；
-     */
+    
     private Integer status;
     
-    /** 对账状态：1待处理；2异常；3不一致；4一致 */
     private Integer reconciliationStatus;
-
-    /**
-     * 下单时间
-     */
+    
     private LocalDateTime createTime;
-
-    /**
-     * 支付时间
-     */
+    
     private LocalDateTime payTime;
-
-    /**
-     * 核销时间
-     */
+    
     private LocalDateTime useTime;
-
-    /**
-     * 退款时间
-     */
+    
     private LocalDateTime refundTime;
-
-    /**
-     * 更新时间
-     */
+    
     private LocalDateTime updateTime;
-
-
+    
 }

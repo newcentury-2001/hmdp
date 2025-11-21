@@ -22,7 +22,7 @@ import static org.javaup.core.Constants.SEPARATOR;
 
 /**
  * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料 
- * @description: 锁信息抽象
+ * @description: 锁
  * @author: 阿星不是程序员
  **/
 @Slf4j
@@ -34,15 +34,13 @@ public abstract class AbstractLockInfoHandle implements LockInfoHandle {
 
     private final ExpressionParser parser = new SpelExpressionParser();
     
-    /**
-     * 锁信息前缀
-     * @return 具体前缀
-     * */
     protected abstract String getLockPrefixName();
+    
     @Override
     public String getLockName(JoinPoint joinPoint,String name,String[] keys){
         return SpringUtil.getPrefixDistinctionName() + "-" + getLockPrefixName() + SEPARATOR + name + getRelKey(joinPoint, keys);
     }
+    
     @Override
     public String simpleGetLockName(String name,String[] keys){
         List<String> definitionKeyList = new ArrayList<>();
@@ -54,10 +52,7 @@ public abstract class AbstractLockInfoHandle implements LockInfoHandle {
         return SpringUtil.getPrefixDistinctionName() + "-" + 
                 LOCK_DISTRIBUTE_ID_NAME_PREFIX + SEPARATOR + name + SEPARATOR + String.join(SEPARATOR, definitionKeyList);
     }
-
-    /**
-     * 获取自定义键
-     * */
+    
     private String getRelKey(JoinPoint joinPoint, String[] keys){
         Method method = getMethod(joinPoint);
         List<String> definitionKeys = getSpElKey(keys, method, joinPoint.getArgs());

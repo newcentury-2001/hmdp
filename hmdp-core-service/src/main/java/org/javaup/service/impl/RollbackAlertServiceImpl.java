@@ -43,17 +43,14 @@ public class RollbackAlertServiceImpl implements IRollbackAlertService {
     @Override
     public void sendRollbackAlert(RollbackFailureLog logEntity) {
         try {
-            // 通知降噪：同voucherId在窗口期内只告警一次
             if (!shouldNotify(logEntity.getVoucherId())) {
                 return;
             }
             String content = formatContent(logEntity);
             if (smsEnabled && smsTo != null && !smsTo.isEmpty()) {
-                // 这里保留扩展点：真实接入短信服务商（阿里/腾讯）
                 log.warn("[ROLLBACK_SMS] to={} content={} ", smsTo, content);
             }
             if (emailEnabled && emailTo != null && !emailTo.isEmpty()) {
-                // 这里保留扩展点：真实接入邮件服务（JavaMailSender等）
                 log.warn("[ROLLBACK_EMAIL] to={} content={} ", emailTo, content);
             }
         } catch (Exception e) {
@@ -69,7 +66,6 @@ public class RollbackAlertServiceImpl implements IRollbackAlertService {
                     dedupWindowSeconds, 
                     TimeUnit.SECONDS);
         } catch (Exception e) {
-            // Redis异常时不阻断告警
             return true;
         }
     }

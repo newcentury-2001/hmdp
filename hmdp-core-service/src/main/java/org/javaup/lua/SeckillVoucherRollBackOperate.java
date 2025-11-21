@@ -23,7 +23,6 @@ public class SeckillVoucherRollBackOperate {
     @Resource
     private RedisCache redisCache;
     
-    // Redis Lua 数值返回在 Spring Data Redis 中通常为 Long，这里使用 Long 并在返回处做安全转换
     private DefaultRedisScript<Long> redisScript;
     
     @PostConstruct
@@ -31,7 +30,6 @@ public class SeckillVoucherRollBackOperate {
         try {
             redisScript = new DefaultRedisScript<>();
             redisScript.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/seckillVoucherRollBack.lua")));
-            // 明确声明 Lua 返回类型为 Long，避免 Long->Integer 的直接强转异常
             redisScript.setResultType(Long.class);
         } catch (Exception e) {
             log.error("redisScript init lua error",e);
@@ -40,7 +38,6 @@ public class SeckillVoucherRollBackOperate {
     
     public Integer execute(List<String> keys, String[] args){
         Object obj = redisCache.getInstance().execute(redisScript, keys, args);
-        // 兼容不同驱动/序列化下的返回类型
         if (obj instanceof Integer) {
             return (Integer) obj;
         }

@@ -66,8 +66,8 @@ public class DateJsonDeserializer extends JsonDeserializer<Date> {
 	/**
 	 * 校验字符串是否是数字
 	 *
-	 * @param number
-	 * @return
+	 * @param number 字符串数字
+	 * @return 结果
 	 */
 	public static boolean isNum(String number) {
 		Matcher m = P.matcher(number);

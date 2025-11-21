@@ -135,7 +135,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         );
 
         // 8.返回token
-        // 8.1 维护等级倒排索引集合成员（best-effort）
         try {
             maintainLevelSetMembership(user.getId());
         } catch (Exception e) {
@@ -216,7 +215,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         userInfo.setUserId(user.getId());
         userInfo.setLevel(1);
         userInfoService.save(userInfo);
-        // 3.1 维护等级倒排索引集合成员（best-effort）
         try {
             maintainLevelSetMembership(user.getId());
         } catch (Exception e) {
@@ -230,10 +228,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         userPhoneService.save(userPhone);
         return user;
     }
-
-    /**
-     * 将用户加入其等级对应的倒排索引集合
-     */
+    
     private void maintainLevelSetMembership(Long userId) {
         if (userId == null) {
             return;

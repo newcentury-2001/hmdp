@@ -7,12 +7,6 @@ package org.javaup.service;
  * @author: 阿星不是程序员
  **/
 public interface IAutoIssueNotifyService {
-
-    /**
-     * 发送自动发券成功通知（带去重控制）
-     * @param voucherId 优惠券ID
-     * @param userId 用户ID
-     * @param orderId 订单ID
-     */
+    
     void sendAutoIssueNotify(Long voucherId, Long userId, Long orderId);
 }

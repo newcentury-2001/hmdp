@@ -20,19 +20,14 @@ public class SeckillVoucherMessage {
     private Long voucherId;
     
     private Long orderId;
-    
-    /** 唯一追踪标识，与订单记录关联 */
+
     private Long traceId;
-    
-    /** 扣减前库存数量 */
+
     private Integer beforeQty;
     
-    /** 本次扣减数量 */
     private Integer changeQty;
     
-    /** 扣减后库存数量 */
     private Integer afterQty;
-
-    /** 是否为“回滚后自动发券”流程产生的消息 */
+    
     private Boolean autoIssue;
 }

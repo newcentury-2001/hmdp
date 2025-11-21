@@ -8,6 +8,6 @@ import org.javaup.entity.RollbackFailureLog;
  * @author: 阿星不是程序员
  **/
 public interface IRollbackAlertService {
-    /** 发送回滚失败告警 */
+
     void sendRollbackAlert(RollbackFailureLog log);
 }

@@ -41,20 +41,16 @@ public class DelCacheDataInit {
     @PostConstruct
     public void init(){
         log.info("==========删除缓存中的数据==========");
-        // 删除商品相关数据缓存
         List<Shop> shopList = shopService.list();
         for (final Shop shop : shopList) {
             redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.CACHE_SHOP_KEY,shop.getId()));
             redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.CACHE_SHOP_KEY_NULL,shop.getId()));
         }
-        // 删除优惠券相关数据缓存
         List<SeckillVoucher> seckillVoucherList = seckillVoucherService.list();
         for (final SeckillVoucher seckillVoucher : seckillVoucherList) {
-            // 删除本地缓存
             RedisKeyBuild seckillVoucherRedisKey =
                     RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, seckillVoucher.getVoucherId());
             seckillVoucherLocalCache.invalidate(seckillVoucherRedisKey.getRelKey());
-            // 删除redis缓存
             redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY,seckillVoucher.getVoucherId()));
             redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY,seckillVoucher.getVoucherId()));
             redisCache.del(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY,seckillVoucher.getVoucherId()));

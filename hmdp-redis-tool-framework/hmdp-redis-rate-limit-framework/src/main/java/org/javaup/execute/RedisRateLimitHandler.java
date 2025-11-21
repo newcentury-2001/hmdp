@@ -22,7 +22,7 @@ import java.util.Objects;
 
 /**
  * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
- * @description: 限流执行 接口实现，IP与用户限流
+ * @description: 限流执行 接口实现
  * @author: 阿星不是程序员
  **/
 public class RedisRateLimitHandler implements RateLimitHandler {
@@ -57,31 +57,20 @@ public class RedisRateLimitHandler implements RateLimitHandler {
         if (isWhitelisted(userId, clientIp)) {
             return;
         }
-        //验证黑名单
         checkBans(voucherId, userId, clientIp);
-        //IP限流窗口毫秒数
         int ipLimitWindowMillis = resolveIpWindow(scene);
-        //IP最大尝试次数
         int ipLimitMaxAttempts = resolveIpMaxAttempts(scene);
-        //用户限流窗口毫秒数
         int userLimitWindowMillis = resolveUserWindow(scene);
-        //用户最大尝试次数
         int userLimitMaxAttempts = resolveUserMaxAttempts(scene);
-        //是否启用滑动窗口限流，默认false，采用动态令牌
         boolean useSliding = resolveSliding();
-        //构建lua中的键名
         List<String> keys = buildRateLimitKeys(voucherId, userId, clientIp, useSliding);
-        //构建lua中的数据
         String[] args = buildArgs(ipLimitWindowMillis, ipLimitMaxAttempts, userLimitWindowMillis, userLimitMaxAttempts);
 
         RateLimitContext ctx = buildContext(voucherId, userId, clientIp, keys, useSliding,
                 ipLimitWindowMillis, ipLimitMaxAttempts, userLimitWindowMillis, userLimitMaxAttempts);
-        //执行前置
         safeBeforeExecute(ctx);
-        //在lua中执行滑动窗口或者令牌的限流功能
         Integer result = executeLua(useSliding, keys, args);
         ctx.setResult(result);
-        //验证是否触发限流
         handleResult(ctx);
     }
     

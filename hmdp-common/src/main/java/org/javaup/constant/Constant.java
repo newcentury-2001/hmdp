@@ -15,17 +15,11 @@ public class Constant {
     
     public static final String SECKILL_VOUCHER_TOPIC = "seckill_voucher_topic";
     
-    /**
-     * 秒杀券缓存失效广播主题
-     */
     public static final String SECKILL_VOUCHER_CACHE_INVALIDATION_TOPIC = "seckill_voucher_cache_invalidation_topic";
     
     public static final String BLOOM_FILTER_HANDLER_SHOP = "shop";
     
     public static final String BLOOM_FILTER_HANDLER_VOUCHER = "voucher";
     
-    /**
-     * 延迟提醒
-     * */
     public static final String DELAY_VOUCHER_REMINDER ="h_delay_voucher_reminder";
 }

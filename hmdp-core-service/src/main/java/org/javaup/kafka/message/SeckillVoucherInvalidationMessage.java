@@ -13,10 +13,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class SeckillVoucherInvalidationMessage {
-
-    /** 秒杀券的 voucherId */
+    
     private Long voucherId;
-
-    /** 可选：失效原因（update/delete/expire等），仅做观测用 */
+    
     private String reason;
 }

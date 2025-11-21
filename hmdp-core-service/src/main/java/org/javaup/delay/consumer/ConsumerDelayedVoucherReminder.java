@@ -86,12 +86,12 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
     @Value("${seckill.reminder.notify.top.buyers.days:30}")
     private int topBuyersDays;
     /**
-     * Top购买用户数量（与maxNotifyUsers合并后去重）
+     * Top购买用户数量
      * */
     @Value("${seckill.reminder.notify.top.buyers.count:200}")
     private int topBuyersCount;
     /**
-     * 最大会员等级（用于按minLevel进行集合并集范围）
+     * 最大会员等级
      */
     @Value("${seckill.reminder.notify.user.level.max:10}")
     private int maxUserLevel;
@@ -155,7 +155,6 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
     }
 
     private List<UserInfo> queryEligibleUserInfos(String allowedLevelsStr, Integer minLevel) {
-        // 1) 优先使用Redis集合倒排索引，避免DB按level的全路由
         if (StrUtil.isNotBlank(allowedLevelsStr)) {
             Set<Integer> allowed = parseAllowedLevels(allowedLevelsStr);
             if (CollectionUtil.isNotEmpty(allowed)) {
@@ -171,14 +170,12 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
                     }
                     return list;
                 }
-                // Redis集合为空或未构建时，回退到DB查询（可能全路由）
                 return userInfoService.lambdaQuery()
                         .select(UserInfo::getUserId, UserInfo::getLevel)
                         .in(UserInfo::getLevel, allowed)
                         .last("limit " + maxNotifyUsers)
                         .list();
             }
-            // allowedLevels无效时按minLevel处理
             int useMin = Objects.nonNull(minLevel) ? minLevel : defaultMinLevel;
             List<Long> fromRedis = readUserIdsFromLevelSets(buildLevelRange(useMin, maxUserLevel), maxNotifyUsers);
             if (CollectionUtil.isNotEmpty(fromRedis)) {
@@ -216,7 +213,6 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
                     .last("limit " + maxNotifyUsers)
                     .list();
         }
-        // 默认最小等级
         List<Long> fromRedis = readUserIdsFromLevelSets(buildLevelRange(defaultMinLevel, maxUserLevel), maxNotifyUsers);
         if (CollectionUtil.isNotEmpty(fromRedis)) {
             List<UserInfo> list = new ArrayList<>(fromRedis.size());
@@ -250,7 +246,6 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
         if (CollectionUtil.isEmpty(levels)) { 
             return Collections.emptyList(); 
         }
-        // 构造集合键
         List<RedisKeyBuild> keys = new ArrayList<>(levels.size());
         for (Integer lv : levels) {
             if (lv == null) { 
@@ -261,7 +256,6 @@ public class ConsumerDelayedVoucherReminder implements ConsumerTask {
         if (keys.isEmpty()) { 
             return Collections.emptyList();
         }
-        // 单集合直接抽样，多集合并集到临时键后抽样
         if (keys.size() == 1) {
             Set<Long> r = redisCache.distinctRandomMembersForSet(keys.get(0), Math.max(count, 1), Long.class);
             return new ArrayList<>(r);

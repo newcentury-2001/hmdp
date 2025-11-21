@@ -55,7 +55,6 @@ public class UserInfoServiceImpl extends ServiceImpl<UserInfoMapper, UserInfo> i
         if (Objects.isNull(userId) || Objects.isNull(newLevel) || newLevel <= 0) {
             return Result.fail("参数非法：userId/newLevel");
         }
-        // 查当前等级（按分片键 user_id，避免全路由）
         UserInfo userInfo = this.lambdaQuery()
                 .eq(UserInfo::getUserId, userId)
                 .one();
