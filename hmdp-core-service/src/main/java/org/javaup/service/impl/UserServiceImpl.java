@@ -44,7 +44,7 @@ import static org.javaup.utils.RedisConstants.USER_SIGN_KEY;
 import static org.javaup.utils.SystemConstants.USER_NICK_NAME_PREFIX;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
+ * @program: 黑马点评-plus升级版实战项目
  * @description: 用户 接口实现
  * @author: 阿星不是程序员
  **/
@@ -88,18 +88,23 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Result<String> login(LoginFormDTO loginForm, HttpSession session) {
+    public Result<String> login(LoginFormDTO loginForm) {
+        log.info("开始处理登录请求");
         // 1.校验手机号
         String phone = loginForm.getPhone();
+        log.info("登录手机号: {}", phone);
         if (RegexUtils.isPhoneInvalid(phone)) {
             // 2.如果不符合，返回错误信息
+            log.warn("手机号格式错误: {}", phone);
             return Result.fail("手机号格式错误！");
         }
         // 3.从redis获取验证码并校验
         String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + phone);
         String code = loginForm.getCode();
+        log.info("验证码校验 - 缓存验证码: {}, 用户输入验证码: {}", cacheCode, code);
         if (cacheCode == null || !cacheCode.equals(code)) {
             // 不一致，报错
+            log.warn("验证码错误 - 缓存验证码: {}, 用户输入验证码: {}", cacheCode, code);
             return Result.fail("验证码错误");
         }
 

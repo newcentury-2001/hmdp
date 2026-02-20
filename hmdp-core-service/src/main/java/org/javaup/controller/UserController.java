@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Objects;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
+ * @program: 黑马点评-plus升级版实战项目
  * @description: 用户api
  * @author: 阿星不是程序员
  **/
@@ -53,9 +53,11 @@ public class UserController {
      * @param loginForm 登录参数，包含手机号、验证码；或者手机号、密码
      */
     @PostMapping("/login")
-    public Result<String> login(@RequestBody LoginFormDTO loginForm, HttpSession session){
+    public Result<String> login(@RequestBody LoginFormDTO loginForm){
+        log.info("收到登录请求: phone={}, code={}, password={}", 
+            loginForm.getPhone(), loginForm.getCode(), loginForm.getPassword());
         // 实现登录功能
-        return userService.login(loginForm, session);
+        return userService.login(loginForm);
     }
 
     /**
@@ -111,6 +113,7 @@ public class UserController {
         UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
         // 返回
         return Result.ok(userDTO);
+
     }
 
     @PostMapping("/sign")

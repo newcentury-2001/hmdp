@@ -18,8 +18,8 @@ import static org.javaup.utils.RedisConstants.CACHE_NULL_TTL;
 import static org.javaup.utils.RedisConstants.LOCK_SHOP_KEY;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
- * @description: 缓存工具-黑马点评普通版本使用
+ * @program: 黑马点评-plus升级版实战项目
+ * @description: 缓存客户端
  * @author: 阿星不是程序员
  **/
 @Slf4j

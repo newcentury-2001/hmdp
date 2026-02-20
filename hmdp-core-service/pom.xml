@@ -35,6 +35,11 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <!-- 使用log4j2作为日志框架 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-log4j2</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
@@ -76,6 +81,11 @@
         <dependency>
             <groupId>org.javaup</groupId>
             <artifactId>hmdp-service-lock-framework</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.javaup</groupId>
+            <artifactId>hmdp-redisson-common-framework</artifactId>
             <version>${revision}</version>
         </dependency>
         <dependency>

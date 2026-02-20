@@ -75,7 +75,7 @@ const rules = {
   radio: [
     {
       required: true,
-      message: '必选',
+      message: '请先阅读并同意用户协议',
       trigger: 'change'
     }
   ]

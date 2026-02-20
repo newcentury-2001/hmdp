@@ -1,6 +1,7 @@
 package org.javaup.controller;
 
 
+import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.javaup.dto.CancelVoucherOrderDto;
@@ -23,8 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
- * @description: 优惠券订单api
+ * @program: 黑马点评-plus升级版实战项目
+ * @description: 优惠券订单控制器
  * @author: 阿星不是程序员
  **/
 @RestController
@@ -37,7 +38,7 @@ public class VoucherOrderController {
     @Resource
     private ISeckillAccessTokenService accessTokenService;
 
-    @Resource
+    @Autowired
     private RateLimitHandler rateLimitHandler;
     
     @Resource
