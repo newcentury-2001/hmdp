@@ -14,7 +14,7 @@ local stock = redis.call('get', stockKey);
 if not stock then
     return 10004
 end
-redis.call('del', stockKey)
+redis.call('incrby', stockKey, changeQty)
 if seckillVoucherOrderOperate == 1 then
     if (redis.call('sismember', seckillUserKey, userId) == 1) then
         redis.call('srem', seckillUserKey, userId)
