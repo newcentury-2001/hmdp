@@ -17,5 +17,11 @@ public class DelayBaseQueue {
     protected final String relTopic;
     
     
-    public DelayBaseQueue(RedissonClient redissonClient, String relTopic){        this.redissonClient = redissonClient;        this.relTopic = relTopic;        log.info("[DelayBaseQueue] 初始化阻塞队列: {}", relTopic);        this.blockingQueue = redissonClient.getBlockingQueue(relTopic);        log.info("[DelayBaseQueue] 阻塞队列初始化完成: {}", relTopic);    }
+    public DelayBaseQueue(RedissonClient redissonClient, String relTopic){
+        this.redissonClient = redissonClient;
+        this.relTopic = relTopic;
+        log.info("[DelayBaseQueue] 初始化阻塞队列: {}", relTopic);
+        this.blockingQueue = redissonClient.getBlockingQueue(relTopic);
+        log.info("[DelayBaseQueue] 阻塞队列初始化完成: {}", relTopic);
+    }
 }
